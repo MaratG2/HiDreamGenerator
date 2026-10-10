@@ -74,7 +74,7 @@ On another compatible CUDA system, install the correct CUDA-enabled PyTorch buil
 python app.py --model_path /path/to/checkpoint --model_type full
 ```
 
-Use `--model_type dev` only for a distilled dev checkpoint. The official [dev model](https://huggingface.co/HiDream-ai/HiDream-O1-Image-Dev-2604) uses 28 steps. Full defaults are 50 steps, guidance 5, shift 3; dev defaults are 28 steps, guidance 0, shift 1. Model type is not inferred from a renamed folder.
+Use `--model_type dev` only for a distilled dev checkpoint. The official [dev model](https://huggingface.co/HiDream-ai/HiDream-O1-Image-Dev-2604) uses 28 steps. Full defaults are 50 steps and shift 3, with guidance 1 for single-image edits and guidance 5 for text/composition; dev defaults are 28 steps, guidance 0, shift 1. Model type is not inferred from a renamed folder.
 
 Copy `.env.example` to `.env` for local configuration. Keep `.env` private. Explicit launch arguments take priority; the Windows launcher has its own checkpoint default, overridden with `-ModelPath` and `-ModelType`.
 
@@ -88,6 +88,7 @@ The default is the balanced dynamic SDNQ checkpoint, which keeps all decoder att
 | Reference render size | Edits/composition use a roughly 4 MP minimum internal pixel budget (2048×2048 for square images), bounded to 4096 per edge, then resize to the exact output. The former 2 MP speed compromise is no longer the default. Larger requested outputs keep their size. Both sizes are disclosed as `width`/`height` and `render_width`/`render_height`; smaller exports do not necessarily make edits faster. Text-only generation uses the requested canvas directly. |
 | Keep original aspect | One reference's proportions at the selected long edge, rounded to 64 pixels. It does not preserve the source's original pixel count. Extremely narrow sources are rejected. |
 | Quality | Full: 12/20/32/50 steps, default 50. Dev: 12/20/28/50, default 28. Fewer steps trade detail for speed; more steps do not guarantee better output. |
+| Edit guidance | Full edits default to guidance 1 to preserve source detail without amplifying compression artifacts. API/CLI/MCP callers can explicitly choose stronger guidance when needed. Progress previews include the selected guidance, matching the solver's prediction. |
 | Scheduler | Full defaults to UniPC; dev text/composition uses Flash, dev edits use Flow Match. Explicit API/CLI choices are honored. |
 | Custom steps/shift | Use generated timesteps. The trained 28-step dev schedule is preserved with steps=28, shift=1 and the default scheduler. |
 | Flash noise controls | `noise_scale_end` and `noise_clip_std` require Flash; otherwise validation rejects them. |

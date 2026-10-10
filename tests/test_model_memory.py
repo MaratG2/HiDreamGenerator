@@ -2,10 +2,39 @@
 import importlib.util
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "requires the inference environment")
 class TokenChunkingTests(unittest.TestCase):
+    def test_preview_matches_guided_prediction_instead_of_unguided_branch(self):
+        import torch
+        from models.pipeline import generate_image
+
+        class Model:
+            device = torch.device("cpu")
+            config = SimpleNamespace()
+            calls = 0
+
+            def __call__(self, **kwargs):
+                self.calls += 1
+                return SimpleNamespace(x_pred=torch.full((1, 256, 3072), 0.25 if self.calls == 1 else 0.0))
+
+        sample = {"input_ids": torch.zeros((1, 1), dtype=torch.long),
+                  "position_ids": torch.zeros((3, 1, 256), dtype=torch.long),
+                  "token_types": torch.ones((1, 256), dtype=torch.long),
+                  "vinput_mask": torch.ones((1, 256), dtype=torch.bool)}
+        scheduler = SimpleNamespace(timesteps=torch.tensor([500.0]),
+                                    step=lambda prediction, timestep, state, **kwargs: (state - 0.5 * prediction,))
+        previews = []
+        with patch("models.pipeline.build_t2i_text_sample", return_value=sample), patch("models.pipeline.build_scheduler", return_value=scheduler):
+            result = generate_image(Model(), SimpleNamespace(), "test", width=512, height=512,
+                                    num_inference_steps=1, guidance_scale=3, noise_scale_start=0,
+                                    use_flash_attn=False, callback=lambda step, total, preview: previews.append(preview()))
+        # Guided x0 is 0.75 -> RGB 223; the misleading conditional preview was 159.
+        self.assertEqual(previews[0].getpixel((100, 100)), (223, 223, 223))
+        self.assertEqual(previews[0].getpixel((100, 100)), result.getpixel((100, 100)))
+
     def test_inference_chunks_preserve_mlp_output_and_training_gradients(self):
         import torch
         from models.qwen3_vl_transformers import Qwen3VLTextMLP

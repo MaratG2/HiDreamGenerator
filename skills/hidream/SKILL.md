@@ -54,7 +54,8 @@ reference's role in the prompt.
   such as landscape or portrait when choosing supported dimensions.
 - Leave `scheduler="auto"` and omit steps, guidance, shift, and noise controls
   unless requested. Defaults depend on the loaded model: full uses 50 steps,
-  guidance 5, shift 3; dev uses 28 steps, guidance 0, shift 1. Do not choose the
+  shift 3, and guidance 1 for edits / 5 for text and composition; dev uses 28
+  steps, guidance 0, shift 1. Do not choose the
   checkpoint type through a generation argument; the backend is already loaded.
   `noise_scale_end` and `noise_clip_std` apply only to the Flash scheduler.
 - Small edits and compositions render internally at about 4 MP (2048x2048 for square edits) before resizing

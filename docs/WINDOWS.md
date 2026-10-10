@@ -131,6 +131,20 @@ An older `.env` may still select `HiDream-O1-Image-SDNQ-4bit-low-vram`; update
 `HIDREAM_MODEL_PATH` to the path above when launching `app.py` directly. The
 PowerShell launcher uses the new default unless `-ModelPath` is explicit.
 
+A 50-step portrait-background edit at 2048×2048 internally / 1024×1024 export
+showed that increasing resolution alone did not remove the low-VRAM checkpoint's
+texture artifacts. The balanced checkpoint improved the result, but guidance 5
+still exaggerated texture. Guidance 1 produced a substantially cleaner final
+image and is now the default for full-model single-image edits. Text generation
+and multi-reference composition retain guidance 5; explicit overrides are honored.
+The final guidance-1 edit took 242 seconds on the RTX 5060 Ti; Windows GPU usage
+was observed around 13.3–13.7 GiB during the balanced-checkpoint tests. These are
+measurements for one example, not a general speed or quality guarantee. The
+generated background remained dark blue-gray rather than exact RGB black;
+generative editing does not guarantee a flat color or unchanged source pixels.
+Progress previews now show the guided prediction instead of the cleaner
+conditional branch that previously concealed this difference.
+
 ### Windows acceleration and measured speed
 
 The upstream [`flash-attn`](https://github.com/Dao-AILab/flash-attention) package

@@ -8,6 +8,9 @@ class GenerationSettingsTests(unittest.TestCase):
     def test_full_and_dev_defaults(self):
         full = resolve_settings("full", "t2i", {})
         self.assertEqual((full["num_inference_steps"], full["guidance_scale"], full["scheduler_name"]), (50, 5, "default"))
+        self.assertEqual(resolve_settings("full", "edit", {})["guidance_scale"], 1)
+        self.assertEqual(resolve_settings("full", "subject", {})["guidance_scale"], 5)
+        self.assertEqual(resolve_settings("full", "edit", {"guidance_scale": 5})["guidance_scale"], 5)
         for mode, scheduler in (("t2i", "flash"), ("edit", "flow_match"), ("subject", "flash")):
             dev = resolve_settings("dev", mode, {"num_inference_steps": 28})
             self.assertEqual(dev["scheduler_name"], scheduler)

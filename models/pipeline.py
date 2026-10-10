@@ -405,7 +405,6 @@ def generate_image(
                 v_guided = v_uncond + guidance_scale * (v_cond - v_uncond)
             else:
                 v_guided = v_cond
-            preview_x0 = x_pred_cond
         else:
             vinputs = torch.cat([z, ref_patches], dim=1)
             x_vis_list = []
@@ -433,7 +432,11 @@ def generate_image(
                 v_guided = v_uncond + guidance_scale * (v_cond - v_uncond)
             else:
                 v_guided = v_cond
-            preview_x0 = x_vis_list[0]
+
+        # Preview the same guided clean-image estimate used by the solver.
+        # Showing only the conditional prediction conceals CFG amplification
+        # and can look much cleaner than the image eventually exported.
+        preview_x0 = z.float() + sigma * v_guided
 
         model_output = -v_guided
         # model_output = clamp_tensor(model_output, percentage = 0.05)

@@ -68,7 +68,9 @@ def resolve_settings(model_type, mode, data):
         raise ValueError("scheduler_name must be auto, default, flow_match, or flash")
     defaults = {
         "num_inference_steps": 50 if model_type == "full" else 28,
-        "guidance_scale": 5.0 if model_type == "full" else 0.0,
+        # Strong CFG amplified texture artifacts in reference-preserving edits.
+        # Keep the direct conditional prediction for edits unless overridden.
+        "guidance_scale": (1.0 if mode == "edit" else 5.0) if model_type == "full" else 0.0,
         "shift": 3.0 if model_type == "full" else 1.0,
         "noise_scale_start": 8.0,
         "noise_scale_end": 8.0,
