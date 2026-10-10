@@ -8,7 +8,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import torch
 from dotenv import load_dotenv
-from transformers import AutoProcessor
+from transformers import AutoConfig, AutoProcessor
+from model_runtime import configure_image_memory, image_device_map
 
 # Allow TF32 tensor cores for the small amount of FP32 matrix math that remains
 # around the BF16/quantized model. This does not change the model's BF16 dtype.
@@ -96,11 +97,13 @@ def main():
     assert torch.cuda.is_available(), "CUDA is required for inference."
     print(f"[inference] Loading processor and model from {args.model_path}")
     processor = AutoProcessor.from_pretrained(args.model_path)
+    config = AutoConfig.from_pretrained(args.model_path)
     # BF16 is required for practical inference on consumer GPUs and is also
     # the runtime dtype recommended by the SDNQ quantized checkpoints.
     model = Qwen3VLForConditionalGeneration.from_pretrained(
-        args.model_path, dtype=torch.bfloat16, device_map="cuda"
+        args.model_path, dtype=torch.bfloat16, device_map=image_device_map(config)
     ).eval()
+    configure_image_memory(model)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_image)), exist_ok=True)
     tokenizer = get_tokenizer(processor)

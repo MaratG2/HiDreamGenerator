@@ -207,6 +207,10 @@ class HiDreamAPIContractTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/api/generate/stream/{job_id}", headers={"Last-Event-ID": "999"}).status_code, 400)
 
     def test_reference_render_size_is_disclosed_without_changing_output(self):
+        checkpoint = {"id": "example/quality-checkpoint", "quantization": "uint4", "variant": "protected-projections"}
+        app_module._STATE["checkpoint"] = checkpoint
+        self.assertEqual(self.client.get("/api/runtime").get_json()["checkpoint"], checkpoint)
+        self.assertEqual(self.client.get("/api/status").get_json()["checkpoint"], checkpoint)
         source = io.BytesIO()
         Image.new("RGB", (800, 600)).save(source, format="PNG")
         with patch.object(app_module, "generate_image", return_value=Image.new("RGB", (768, 576))):
@@ -215,13 +219,15 @@ class HiDreamAPIContractTests(unittest.TestCase):
                 "keep_original_aspect": True, "refs_b64": [base64.b64encode(source.getvalue()).decode()]})
             data = response.get_json()
             self.assertEqual((data["width"], data["height"]), (768, 576))
-            self.assertEqual((data["render_width"], data["render_height"]), (1728, 1280))
+            self.assertEqual((data["render_width"], data["render_height"]), (2368, 1792))
             event = self.events(data["job_id"])[-1]
         with Image.open(io.BytesIO(base64.b64decode(event["image"]))) as result:
             metadata = json.loads(result.info["hidream"])
             self.assertEqual(result.size, (768, 576))
-            self.assertEqual(metadata["render_width"], 1728)
+            self.assertEqual(metadata["render_width"], 2368)
             self.assertFalse(metadata["mock_mode"])
+            self.assertEqual(metadata["checkpoint"], checkpoint)
+            self.assertEqual(event["checkpoint"], checkpoint)
 
     def test_wrong_pipeline_dimensions_fail_instead_of_claiming_success(self):
         with patch.object(app_module, "generate_image", return_value=Image.new("RGB", (64, 64))):

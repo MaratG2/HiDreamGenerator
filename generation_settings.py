@@ -42,12 +42,12 @@ def render_dimensions(width, height, has_references):
     """Reference conditioning needs enough pixels; export stays exact.
 
     Small reference-conditioned canvases can collapse into noise. Use the
-    validated roughly 2 MP minimum budget, preserving proportions and keeping
-    either edge within 4096. This avoids forcing every small edit through a
-    memory-heavy 4 MP canvas. Larger outputs and text-only generation keep
-    their requested dimensions.
+    upstream-scale 4 MP minimum budget, preserving proportions and keeping
+    either edge within 4096. The former 2 MP speed compromise is not the
+    quality default. Export size must not silently reduce the model's
+    working resolution. Larger outputs and text-only generation keep their size.
     """
-    minimum_pixels = 2 * 1024 * 1024
+    minimum_pixels = 2048 * 2048
     if not has_references or width * height >= minimum_pixels:
         return width, height
     scale = min(math.sqrt(minimum_pixels / (width * height)), 4096 / max(width, height))

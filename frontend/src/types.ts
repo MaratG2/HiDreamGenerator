@@ -44,6 +44,7 @@ export interface RuntimeSettings {
   model_loaded: boolean;
   model_type: string;
   attention_backend: string;
+  checkpoint?: { id: string; quantization: string; variant: string | null } | null;
 }
 
 export interface SourceImage {

@@ -57,7 +57,7 @@ reference's role in the prompt.
   guidance 5, shift 3; dev uses 28 steps, guidance 0, shift 1. Do not choose the
   checkpoint type through a generation argument; the backend is already loaded.
   `noise_scale_end` and `noise_clip_std` apply only to the Flash scheduler.
-- Small edits and compositions render internally at about 2 MP before resizing
+- Small edits and compositions render internally at about 4 MP (2048x2048 for square edits) before resizing
   to the output size. A small export need not make an edit fast. `preview_max_side`
   limits the tool preview only; it does not change the saved PNG dimensions.
 - Keep prompt refinement off unless requested. It uses a separate refiner service

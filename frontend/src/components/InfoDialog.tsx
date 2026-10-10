@@ -26,6 +26,7 @@ export function InfoDialog({ panel, runtime, runtimeBusy, onMockModeChange, onCl
               <div><dt>Backend</dt><dd>Local Flask API</dd></div>
               <div><dt>Attention</dt><dd>{runtime?.attention_backend ?? "Connecting…"}</dd></div>
               <div><dt>Model</dt><dd>{runtime ? `${runtime.model_type} · ${runtime.model_loaded ? "loaded" : "not loaded"}` : "Connecting…"}</dd></div>
+              {runtime?.checkpoint ? <div><dt>Checkpoint</dt><dd>{runtime.checkpoint.id}</dd></div> : null}
             </dl>
             <div className="runtime-toggle-block">
               <div className="runtime-toggle-copy"><TestTube2 size={19} strokeWidth={1.6} /><span><strong>Mock generation</strong><small>Return synthetic test images without running HiDream.</small></span></div>
@@ -37,7 +38,7 @@ export function InfoDialog({ panel, runtime, runtimeBusy, onMockModeChange, onCl
             <p className="runtime-warning"><AlertTriangle size={15} strokeWidth={1.7} />Off by default. Mock images are visibly labelled and are never model output.</p>
           </>
         ) : (
-          <div className="help-copy"><p><strong>Create</strong> turns a text description into one to four new images.</p><p><strong>Edit</strong> uses one source image and your change instructions. Small edits render at about 2 MP, then resize to the selected output size.</p><p><strong>Refine prompt</strong> calls the configured prompt model; it never adds canned text.</p><p>The first real run can be slower while Triton compiles local GPU kernels.</p></div>
+          <div className="help-copy"><p><strong>Create</strong> turns a text description into one to four new images.</p><p><strong>Edit</strong> uses one source image and your change instructions. Small edits render at about 4 MP, then resize to the selected output size. Editing regenerates the image, so unchanged details can vary.</p><p><strong>Refine prompt</strong> calls the configured prompt model; it never adds canned text.</p><p>The first real run can be slower while Triton compiles local GPU kernels.</p></div>
         )}
       </dialog>
   );

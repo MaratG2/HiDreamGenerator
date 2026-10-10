@@ -682,9 +682,9 @@ textarea:focus, .seed-input:focus {
 .dialog-header { justify-content: space-between; margin-bottom: 20px; }
 .dialog-header h2 { margin: 0; font-size: 19px; }
 .runtime-list { margin: 0; }
-.runtime-list div { display: flex; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--rule); }
+.runtime-list div { display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; border-top: 1px solid var(--rule); }
 .runtime-list dt { color: var(--graphite); }
-.runtime-list dd { margin: 0; font-weight: 600; }
+.runtime-list dd { margin: 0; min-width: 0; max-width: 70%; font-weight: 600; overflow-wrap: anywhere; text-align: right; }
 .runtime-toggle-block { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0 14px; border-top: 1px solid var(--rule); }
 .runtime-toggle-copy { display: flex; align-items: flex-start; gap: 10px; }
 .runtime-toggle-copy > svg { color: #9a3d08; margin-top: 1px; }

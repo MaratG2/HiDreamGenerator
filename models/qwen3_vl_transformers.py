@@ -500,6 +500,14 @@ class Qwen3VLTextMLP(nn.Module):
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
+        # The MLP is independent for each token. Bound its large intermediate
+        # activations during inference instead of spilling VRAM or reducing
+        # checkpoint precision / the image canvas. Leave training unchanged.
+        if not torch.is_grad_enabled() and x.shape[-2] > 2048:
+            return torch.cat([self._forward_chunk(chunk) for chunk in x.split(2048, dim=-2)], dim=-2)
+        return self._forward_chunk(x)
+
+    def _forward_chunk(self, x):
         down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
         return down_proj
 

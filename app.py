@@ -37,6 +37,7 @@ from werkzeug.exceptions import HTTPException
 load_dotenv(Path(__file__).resolve().parent / ".env")
 from generation_settings import aspect_dimensions, number, render_dimensions, resolve_settings, validate_dimensions
 from generation_jobs import GenerationJob, MAX_ACTIVE_JOBS, prune_jobs
+from model_runtime import checkpoint_metadata, configure_image_memory, image_device_map
 from prompt_agent_v2 import DEFAULT_BASE_URL, DEFAULT_MODEL_ID, refine_prompt
 
 
@@ -141,7 +142,7 @@ def _get_tokenizer(processor):
 
 def load_image_model(model_path):
     import torch
-    from transformers import AutoProcessor
+    from transformers import AutoConfig, AutoProcessor
     from models.qwen3_vl_transformers import Qwen3VLForConditionalGeneration
     try:
         import sdnq  # noqa: F401 - registers quantized checkpoints
@@ -150,10 +151,13 @@ def load_image_model(model_path):
     torch.set_float32_matmul_precision("high")
     print(f"[app] Loading checkpoint from {model_path} ...")
     processor = AutoProcessor.from_pretrained(model_path)
-    # NOTE: torch_dtype = torch.float32 will generate more detailed images but with more memory usage
+    config = AutoConfig.from_pretrained(model_path)
+    # Preserve BF16 image weights; vocabulary lookup and the unused head stay on CPU.
     model = Qwen3VLForConditionalGeneration.from_pretrained(
-        model_path, dtype=torch.bfloat16, device_map="cuda"
+        model_path, dtype=torch.bfloat16, device_map=image_device_map(config)
     ).eval()
+    configure_image_memory(model)
+    _STATE["checkpoint"] = checkpoint_metadata(model_path)
     _add_special_tokens(_get_tokenizer(processor))
     return processor, model
 
@@ -864,6 +868,7 @@ def api_status():
         "status": "ready" if _STATE["model"] is not None or _STATE["mock_mode"] else "starting",
         "model_type": _STATE["model_type"],
         "mock_mode": _STATE["mock_mode"],
+        "checkpoint": _STATE.get("checkpoint"),
         "device": _STATE.get("device", "CPU"),
         "attention_backend": os.environ.get("HIDREAM_ATTENTION_BACKEND", "auto"),
         "supported_modes": ["t2i", "edit", "subject"],
@@ -889,6 +894,7 @@ def api_runtime():
         "mock_mode": _STATE["mock_mode"],
         "model_loaded": _STATE["model"] is not None,
         "model_type": _STATE["model_type"],
+        "checkpoint": _STATE.get("checkpoint"),
         "attention_backend": os.environ.get("HIDREAM_ATTENTION_BACKEND", "auto"),
     })
 
@@ -987,6 +993,7 @@ def api_generate_start():
         "width": width, "height": height, "seed": seed, "mode": mode,
         "render_width": render_width, "render_height": render_height,
         "mock_mode": mock_mode, "model_type": _STATE["model_type"],
+        "checkpoint": None if mock_mode else _STATE.get("checkpoint"),
         "parameters": generation_kwargs,
     }
 

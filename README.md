@@ -58,7 +58,7 @@ Requires a CUDA-capable NVIDIA GPU and compatible PyTorch. Download model weight
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-windows-cuda.txt
-.\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('WaveCut/HiDream-O1-Image-SDNQ-uint4-svd-r32-last8-odown-bf16', local_dir=r'HiDream-ai\HiDream-O1-Image-SDNQ-4bit-low-vram')"
+.\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('WaveCut/HiDream-O1-Image-SDNQ-4bit-dynamic-uint4-th1e-2', local_dir=r'HiDream-ai\HiDream-O1-Image-SDNQ-4bit')"
 .\start_image_server.ps1
 ```
 
@@ -78,12 +78,14 @@ Use `--model_type dev` only for a distilled dev checkpoint. The official [dev mo
 
 Copy `.env.example` to `.env` for local configuration. Keep `.env` private. Explicit launch arguments take priority; the Windows launcher has its own checkpoint default, overridden with `-ModelPath` and `-ModelType`.
 
+The default is the balanced dynamic SDNQ checkpoint, which keeps all decoder attention-output and MLP-down projections in BF16. The former `last8` low-VRAM default protects only the final eight layers' projections. Both retain all decoder layers; `full` identifies the model family, not full precision. The unused text-output head and prompt-embedding table stay on CPU for untied checkpoints, saving about 2.3 GiB of GPU weight storage. Only the selected prompt rows transfer to CUDA. Tokenwise MLP chunking also bounds temporary inference memory without changing weights or resolution. Runtime settings and PNG/MCP metadata identify the actual checkpoint.
+
 ## Settings contract
 
 | Setting | Behavior |
 | --- | --- |
 | Output size | API dimensions are 512–4096 in multiples of 64. The returned PNG has the resolved output dimensions; unexpected dimensions are rejected. |
-| Reference render size | Edits/composition use a roughly 2 MP minimum internal pixel budget, bounded to 4096 per edge, then resize to the exact output. Small native edit canvases produced noise in GPU validation; forcing every edit to 4 MP was impractically slow on the test machine. Larger requested outputs keep their size. Both sizes are disclosed as `width`/`height` and `render_width`/`render_height`; smaller exports do not necessarily make edits faster. Text-only generation uses the requested canvas directly. |
+| Reference render size | Edits/composition use a roughly 4 MP minimum internal pixel budget (2048×2048 for square images), bounded to 4096 per edge, then resize to the exact output. The former 2 MP speed compromise is no longer the default. Larger requested outputs keep their size. Both sizes are disclosed as `width`/`height` and `render_width`/`render_height`; smaller exports do not necessarily make edits faster. Text-only generation uses the requested canvas directly. |
 | Keep original aspect | One reference's proportions at the selected long edge, rounded to 64 pixels. It does not preserve the source's original pixel count. Extremely narrow sources are rejected. |
 | Quality | Full: 12/20/32/50 steps, default 50. Dev: 12/20/28/50, default 28. Fewer steps trade detail for speed; more steps do not guarantee better output. |
 | Scheduler | Full defaults to UniPC; dev text/composition uses Flash, dev edits use Flow Match. Explicit API/CLI choices are honored. |

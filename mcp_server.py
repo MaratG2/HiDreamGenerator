@@ -96,6 +96,7 @@ class HiDreamStatus(BaseModel):
     supported_schedulers: list[str] = Field(default_factory=list)
     max_concurrent_generations: int | None = None
     mock_mode: bool = False
+    checkpoint: dict | None = None
     error: str | None = None
 
 
@@ -104,6 +105,7 @@ class HiDreamRuntime(BaseModel):
     model_loaded: bool
     model_type: str
     attention_backend: str
+    checkpoint: dict | None = None
 
 
 def _api_url(path: str) -> str:
@@ -361,6 +363,7 @@ async def _finish_generation(
         "effective_parameters": effective.get("parameters"),
         "mock_mode": effective.get("mock_mode"),
         "model_type": effective.get("model_type"),
+        "checkpoint": effective.get("checkpoint"),
         "sha256": hashlib.sha256(png).hexdigest(),
         "duration_seconds": round(time.monotonic() - started, 2),
     }

@@ -46,7 +46,9 @@ class GenerationSettingsTests(unittest.TestCase):
 
     def test_reference_render_canvas_preserves_output_contract(self):
         self.assertEqual(render_dimensions(768, 576, False), (768, 576))
-        self.assertEqual(render_dimensions(768, 576, True), (1728, 1280))
+        self.assertEqual(render_dimensions(768, 576, True), (2368, 1792))
+        self.assertEqual(render_dimensions(1024, 1024, True), (2048, 2048))
+        self.assertEqual(render_dimensions(1472, 1472, True), (2048, 2048))
         self.assertEqual(render_dimensions(2048, 2048, True), (2048, 2048))
         for width, height in ((1024, 512), (512, 1024), (4096, 512), (64, 1024)):
             rw, rh = render_dimensions(width, height, True)

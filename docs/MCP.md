@@ -224,13 +224,13 @@ through the SDK's in-memory MCP client:
 With `keep_original_aspect=true`, `max(width, height)` selects the long edge and
 source proportions are rounded to 64 pixels. Both output dimensions are explicit
 when that flag is false. Reference-conditioned generation renders internally at
-at least roughly 2 MP (up to 4096 per edge) and then resizes to the selected output; small
+at least roughly 4 MP (2048×2048 for square edits, up to 4096 per edge) and then resizes to the selected output; small
 export sizes do not make editing faster. Inputs must be
 PNG/JPEG/WebP, no larger than 24 MB or 24 megapixels each, within the API's 64 MB
 request limit. Batches must not overflow the maximum seed.
 
 JSON sidecars distinguish requested `parameters` from `effective_parameters` and
-include actual PNG dimensions, `render_width`, `render_height`, `model_type` and `mock_mode`. The latter fields
+include actual PNG dimensions, `render_width`, `render_height`, `model_type`, `checkpoint` and `mock_mode`. Checkpoint metadata includes its publisher ID, source revision (when available), quantization and variant. The latter fields
 are null with an older server lacking embedded metadata. Current mock outputs
 are explicitly labelled in the tool response. No-overwrite file creation is
 atomic. Existing explicit batch destinations are checked before generation starts.

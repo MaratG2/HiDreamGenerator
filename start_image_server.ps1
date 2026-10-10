@@ -1,4 +1,4 @@
-<# Starts the memory-optimized HiDream web UI on Windows. #>
+<# Starts the HiDream web UI with the quality-preserving quantized checkpoint. #>
 
 [CmdletBinding()]
 param(
@@ -19,7 +19,7 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "Project virtual environment not found. Install requirements-windows-cuda.txt first."
 }
 if ([string]::IsNullOrWhiteSpace($ModelPath)) {
-    $ModelPath = Join-Path $PSScriptRoot "HiDream-ai\HiDream-O1-Image-SDNQ-4bit-low-vram"
+    $ModelPath = Join-Path $PSScriptRoot "HiDream-ai\HiDream-O1-Image-SDNQ-4bit"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $ModelPath "config.json") -PathType Leaf)) {
     throw "HiDream checkpoint not found: $ModelPath"

@@ -213,7 +213,7 @@ export function ControlPanel(props: ControlPanelProps) {
 
         {!props.canGenerate ? <p className="field-hint">Load a model or enable mock generation in Runtime settings.</p> : null}
         {sizeDisabled ? <p className="field-hint">Source proportions, rounded to 64 pixels. Resolution sets the long edge.</p> : null}
-        {props.mode === "edit" && !props.mockMode ? <p className="field-hint">Small edits render at about 2 MP for model quality, then resize to your chosen output size.</p> : null}
+        {props.mode === "edit" && !props.mockMode ? <p className="field-hint">Edits render at about 4 MP for model quality, then resize to your chosen output size. Allow several minutes.</p> : null}
         {props.error ? <p className="control-error" role="alert">{props.error}</p> : null}
       </div>
 

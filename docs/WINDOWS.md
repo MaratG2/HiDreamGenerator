@@ -36,7 +36,7 @@ PyTorch output on an RTX 5060 Ti is `2.13.0+cu130 True`. Download the recommende
 image checkpoint if it is not present:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('WaveCut/HiDream-O1-Image-SDNQ-uint4-svd-r32-last8-odown-bf16', local_dir=r'HiDream-ai\HiDream-O1-Image-SDNQ-4bit-low-vram')"
+.\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('WaveCut/HiDream-O1-Image-SDNQ-4bit-dynamic-uint4-th1e-2', local_dir=r'HiDream-ai\HiDream-O1-Image-SDNQ-4bit')"
 ```
 
 Then launch the web UI:
@@ -113,13 +113,23 @@ official [MCP Python SDK 2.0](https://py.sdk.modelcontextprotocol.io/) and
 Codex's documented local stdio MCP configuration.
 
 This checkpoint uses `--model_type full` and supports text-to-image, editing,
-and subject-driven generation. It is the publisher's lowest-VRAM clean-looking
-variant, with a reported generation peak of about 8.3 GiB. The balanced dynamic
-variant was also tested end-to-end here: it generated a 2048×2048 image in
-5 minutes 57 seconds, but reached about 15.0 GiB total GPU usage on Windows and
-therefore has too little safety margin to be the default. The low-VRAM variant
-is quantized, not truncated or distilled: it still uses the full model's 50
-denoising steps.
+and subject-driven generation. The default is now the balanced dynamic SDNQ
+variant. It retains BF16 decoder output/down projections throughout the model;
+the previous lowest-VRAM variant protected only the final eight layers. Both
+retain all 36 decoder layers and use the full model's 50-step defaults.
+
+The loader keeps the unused output head and the input vocabulary table on CPU
+for untied checkpoints (about 2.3 GiB total). Prompt lookup runs on CPU and sends
+only the selected rows to CUDA. The decoder's tokenwise MLP uses chunks of 2048
+tokens during inference to reduce temporary memory; training is unchanged. A
+BF16 GPU check at the model's actual layer dimensions saved 384 MiB at an
+8192-token sequence length and produced identical output. These changes preserve
+GPU space for the less aggressive checkpoint and image activations.
+Edits now use an approximately 4 MP internal canvas, including 2048×2048 for
+square sources, before resizing to the requested export. Allow several minutes.
+An older `.env` may still select `HiDream-O1-Image-SDNQ-4bit-low-vram`; update
+`HIDREAM_MODEL_PATH` to the path above when launching `app.py` directly. The
+PowerShell launcher uses the new default unless `-ModelPath` is explicit.
 
 ### Windows acceleration and measured speed
 
@@ -140,7 +150,7 @@ kernels. Run the verifier at any time:
 .\.venv\Scripts\python.exe .\scripts\verify_windows_acceleration.py
 ```
 
-Controlled 2048×2048 tests on the RTX 5060 Ti, using the low-VRAM checkpoint
+Earlier text-to-image 2048×2048 tests on the RTX 5060 Ti, using the low-VRAM checkpoint
 loaded once and the same prompt/seed, measured:
 
 | Backend | Seconds per step | Change |
@@ -150,8 +160,10 @@ loaded once and the same prompt/seed, measured:
 | FlashAttention + Triton SDNQ | 5.55 | 30% faster |
 | FlashAttention + Triton SDNQ + TF32 | 5.42 | 32% faster |
 
-That projects to approximately 4 minutes 30 seconds for 50 full-model steps,
-excluding checkpoint load and the first Triton JIT. FlashAttention helps, but
+That projected approximately 4 minutes 30 seconds for 50 text-to-image steps,
+excluding checkpoint load and the first Triton JIT. These are historical
+low-VRAM text-generation measurements, not timings for the new edit defaults.
+Reference editing processes extra image tokens. FlashAttention helps, but
 the quantized model's linear layers remain the main cost; a 28-step distilled
 checkpoint is the next meaningful route to lower latency.
 
