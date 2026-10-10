@@ -11,6 +11,11 @@ class TokenChunkingTests(unittest.TestCase):
         environment = patch.dict("os.environ", {"HIDREAM_OFFLOAD_LAYERS": "0"})
         environment.start()
         self.addCleanup(environment.stop)
+        # Numerical unit cases use tiny fixed tensors; render-scale policy has
+        # separate coverage in test_generation_settings.
+        canvas = patch("models.pipeline.render_dimensions", side_effect=lambda w, h, refs: (w, h))
+        canvas.start()
+        self.addCleanup(canvas.stop)
 
     def test_generation_uses_execution_gpu_when_first_parameter_is_offloaded(self):
         import torch
@@ -118,6 +123,38 @@ class TokenChunkingTests(unittest.TestCase):
         with torch.inference_mode():
             actual = layer(x.detach())
         torch.testing.assert_close(actual, dense.detach(), rtol=1e-5, atol=1e-6)
+
+    def test_late_grid_averaging_covers_both_guidance_branches(self):
+        import torch
+        from models.pipeline import generate_image
+        from models.patch_grid import PatchGridAverager
+
+        grid = PatchGridAverager(512, 512)
+        y = torch.arange(512).reshape(1, 1, 512, 1)
+        artifact = (0.02 * torch.cos(2 * torch.pi * y / 32)).expand(1, 3, 512, 512)
+        calls = []
+
+        class Model:
+            device = torch.device("cpu")
+            config = SimpleNamespace()
+            def __call__(self, **kwargs):
+                conditional = kwargs["input_ids"].item() == 0
+                calls.append(conditional)
+                return SimpleNamespace(x_pred=grid.patches(artifact + (0.25 if conditional else 0)))
+
+        def sample(prompt, *args):
+            return {"input_ids": torch.tensor([[0 if prompt.strip() else 1]]),
+                    "position_ids": torch.zeros((3, 1, 256), dtype=torch.long),
+                    "token_types": torch.ones((1, 256), dtype=torch.long),
+                    "vinput_mask": torch.ones((1, 256), dtype=torch.bool)}
+        scheduler = SimpleNamespace(timesteps=torch.tensor([100.]),
+                                    step=lambda prediction, timestep, state, **kwargs: (state - 0.1 * prediction,))
+        with patch("models.pipeline.build_t2i_text_sample", side_effect=sample), patch("models.pipeline.build_scheduler", return_value=scheduler):
+            output = generate_image(Model(), SimpleNamespace(), "test", width=512, height=512,
+                                    num_inference_steps=1, guidance_scale=3, noise_scale_start=0,
+                                    patch_grid_smoothing=True, use_flash_attn=False)
+        self.assertEqual(calls, [True] * 4 + [False] * 4)
+        self.assertEqual(output.getpixel((100, 100)), (223, 223, 223))
 
     def test_cpu_embeddings_return_identical_rows_to_cuda_without_moving_table(self):
         import torch

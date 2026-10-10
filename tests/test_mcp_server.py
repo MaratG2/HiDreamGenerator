@@ -151,6 +151,7 @@ class HiDreamMCPTests(unittest.IsolatedAsyncioTestCase):
                     "scheduler": "flash",
                     "num_inference_steps": 12,
                     "guidance_scale": 1.5,
+                    "patch_grid_smoothing": False,
                     "output_path": "generated.png",
                 },
                 progress_callback=on_progress,
@@ -170,6 +171,7 @@ class HiDreamMCPTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["scheduler_name"], "flash")
         self.assertEqual(payload["num_inference_steps"], 12)
         self.assertEqual(payload["guidance_scale"], 1.5)
+        self.assertFalse(payload["patch_grid_smoothing"])
 
     async def test_batch_generation_is_sequential_and_increments_seed(self) -> None:
         async with Client(mcp_server.mcp) as client:
@@ -199,16 +201,7 @@ class HiDreamMCPTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(edit_payload["mode"], "edit")
             self.assertEqual(len(edit_payload["refs_b64"]), 1)
             self.assertTrue(edit_payload["keep_original_aspect"])
-            self.assertTrue(edit_payload["preserve_background_subject"])
-
-            forced = await client.call_tool("edit_image", {
-                "prompt": "Change the background to black",
-                "source_image_path": str(self.source_a),
-                "preserve_background_subject": False,
-                "output_path": "generative-edit.png",
-            })
-            self.assertFalse(forced.is_error)
-            self.assertFalse(FakeHiDreamHandler.payloads[-1]["preserve_background_subject"])
+            self.assertTrue(edit_payload["patch_grid_smoothing"])
 
             composed = await client.call_tool(
                 "compose_images",
@@ -222,6 +215,7 @@ class HiDreamMCPTests(unittest.IsolatedAsyncioTestCase):
             compose_payload = FakeHiDreamHandler.payloads[-1]
             self.assertEqual(compose_payload["mode"], "subject")
             self.assertEqual(len(compose_payload["refs_b64"]), 2)
+            self.assertTrue(compose_payload["patch_grid_smoothing"])
 
     async def test_batch_rejects_seed_overflow_before_gpu_request(self):
         count = len(FakeHiDreamHandler.payloads)

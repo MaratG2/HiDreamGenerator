@@ -14,6 +14,7 @@ from .flash_scheduler import FlashFlowMatchEulerDiscreteScheduler
 from .utils import resize_pilimage, calculate_dimensions, get_rope_index_fix_point
 from .utils import create_layout_reference_images, load_layout_bboxes
 from .qwen3_vl_transformers import is_flash_attn_available
+from .patch_grid import PatchGridAverager
 
 TIMESTEP_TOKEN_NUM = 1
 NOISE_SCALE = 8.0
@@ -123,6 +124,7 @@ def generate_image(
         layout_bboxes: str = None,
         callback=None,
         use_flash_attn: bool = None,
+        patch_grid_smoothing: bool = True,
 ) -> Image.Image:
     device = model.device
     # Accelerate can park the first parameter on meta when the vision encoder
@@ -400,17 +402,37 @@ def generate_image(
 
     cond_image_embeds = None
     cond_deepstack_image_embeds = None
+    aligned_reference = (ref_patches is not None and len(ref_pils_resized) == 1
+                         and ref_pils_resized[0].size == (width, height))
+    grid_averager = PatchGridAverager(height, width, PATCH_SIZE, aligned_reference)
 
     for step_idx, step_t in enumerate(tqdm.tqdm(sched.timesteps, desc="Generating")):
         t_pixeldit = 1.0 - step_t.float() / 1000.0
         sigma = (step_t.float() / 1000.0).to(dtype=torch.float32).clamp_min(T_EPS)
+        smooth_grid = patch_grid_smoothing and float(sigma) <= 0.2
+
+        def predict_clean(sample, inputs):
+            nonlocal cond_image_embeds, cond_deepstack_image_embeds
+            def predict(current):
+                nonlocal cond_image_embeds, cond_deepstack_image_embeds
+                result = forward_once(sample, current, t_pixeldit,
+                                      cond_image_embeds, cond_deepstack_image_embeds)
+                if ref_patches is None:
+                    return result
+                prediction, emb, ds_emb = result
+                if emb is not None and ds_emb is not None:
+                    cond_image_embeds = emb.detach()
+                    cond_deepstack_image_embeds = [d.detach() for d in ds_emb]
+                return prediction
+            original = predict(inputs)
+            return grid_averager(predict, inputs, original) if smooth_grid else original
 
         if ref_patches is None:
-            x_pred_cond = forward_once(samples[0], z.clone(), t_pixeldit)
+            x_pred_cond = predict_clean(samples[0], z)
             v_cond = (x_pred_cond.to(dtype=torch.float32) - z.to(dtype=torch.float32)) / sigma
 
             if len(samples) > 1:
-                x_pred_uncond = forward_once(samples[1], z.clone(), t_pixeldit)
+                x_pred_uncond = predict_clean(samples[1], z)
                 v_uncond = (x_pred_uncond.to(dtype=torch.float32) - z.to(dtype=torch.float32)) / sigma
                 v_guided = v_uncond + guidance_scale * (v_cond - v_uncond)
             else:
@@ -419,18 +441,7 @@ def generate_image(
             vinputs = torch.cat([z.to(dtype), ref_patches], dim=1)
             x_vis_list = []
             for sample in samples:
-                xp, emb, ds_emb = forward_once(
-                    sample, 
-                    vinputs, 
-                    t_pixeldit, 
-                    precomputed_image_embeds=cond_image_embeds,
-                    precomputed_deepstack_image_embeds=cond_deepstack_image_embeds
-                )
-                if emb is not None and ds_emb is not None:
-                    cond_image_embeds = emb.detach()
-                    cond_deepstack_image_embeds = [d.detach() for d in ds_emb]
-                x_vis_list.append(xp)
-            #x_vis_list = [forward_once(sample, vinputs, t_pixeldit) for sample in samples]
+                x_vis_list.append(predict_clean(sample, vinputs))
             x_vis_stacked = torch.cat(x_vis_list, dim=0)
             
             z_rep = z.expand(len(samples), -1, -1)

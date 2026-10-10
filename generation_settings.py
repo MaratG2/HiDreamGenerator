@@ -39,16 +39,16 @@ def aspect_dimensions(source_width, source_height, long_side):
 
 
 def render_dimensions(width, height, has_references):
-    """Reference conditioning needs enough pixels; export stays exact.
+    """Use the model's training-scale canvas; export stays exact.
 
-    Small reference-conditioned canvases can collapse into noise. Use the
+    Small canvases can collapse into noise in creation as well as editing. Use the
     upstream-scale 4 MP minimum budget, preserving proportions and keeping
     either edge within 4096. The former 2 MP speed compromise is not the
     quality default. Export size must not silently reduce the model's
-    working resolution. Larger outputs and text-only generation keep their size.
+    working resolution. Larger outputs keep their size.
     """
     minimum_pixels = 2048 * 2048
-    if not has_references or width * height >= minimum_pixels:
+    if width * height >= minimum_pixels:
         return width, height
     scale = min(math.sqrt(minimum_pixels / (width * height)), 4096 / max(width, height))
     return tuple(min(4096, math.ceil(value * scale / 64) * 64) for value in (width, height))
@@ -88,6 +88,10 @@ def resolve_settings(model_type, mode, data):
         if scheduler != "flash":
             result.pop(name)
     result["scheduler_name"] = scheduler
+    smoothing = data.get("patch_grid_smoothing", True)
+    if not isinstance(smoothing, bool):
+        raise ValueError("patch_grid_smoothing must be a boolean")
+    result["patch_grid_smoothing"] = smoothing
     # Keep the trained schedule when the caller explicitly selects its standard
     # step count too. Custom step counts/shift/scheduler use generated schedules.
     trained = (model_type == "dev" and result["num_inference_steps"] == 28

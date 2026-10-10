@@ -83,6 +83,7 @@ PreviewSize = Annotated[
 ]
 BatchSize = Annotated[int, Field(ge=1, le=4, description="Number of sequential images to generate.")]
 Scheduler = Literal["auto", "default", "flow_match", "flash"]
+PatchGridSmoothing = Annotated[bool, Field(description="Reduce HiDream's patch grid by averaging shifted predictions during final denoising. Applies to the whole image.")]
 
 
 class HiDreamStatus(BaseModel):
@@ -97,7 +98,6 @@ class HiDreamStatus(BaseModel):
     max_concurrent_generations: int | None = None
     mock_mode: bool = False
     checkpoint: dict | None = None
-    background_edit_available: bool = False
     error: str | None = None
 
 
@@ -107,7 +107,6 @@ class HiDreamRuntime(BaseModel):
     model_type: str
     attention_backend: str
     checkpoint: dict | None = None
-    background_edit_available: bool = False
 
 
 def _api_url(path: str) -> str:
@@ -297,6 +296,7 @@ def _payload(
     noise_scale_start: float | None,
     noise_scale_end: float | None,
     noise_clip_std: float | None,
+    patch_grid_smoothing: bool = True,
 ) -> dict:
     data: dict = {
         "mode": mode,
@@ -306,6 +306,7 @@ def _payload(
         "height": height,
         "seed": seed,
         "keep_original_aspect": keep_original_aspect,
+        "patch_grid_smoothing": patch_grid_smoothing,
     }
     if scheduler != "auto":
         data["scheduler_name"] = scheduler
@@ -376,11 +377,8 @@ async def _finish_generation(
         overwrite,
     )
 
-    result_description = ("Background replaced with the original subject preserved."
-                          if effective.get("engine") == "background_composite"
-                          else f"HiDream {payload['mode']} generation completed{' (MOCK OUTPUT)' if effective.get('mock_mode') else ''}.")
     summary = (
-        f"{result_description}\n"
+        f"HiDream {payload['mode']} generation completed{' (MOCK OUTPUT)' if effective.get('mock_mode') else ''}.\n"
         f"Full PNG: {path}\n"
         f"Metadata: {metadata_path}\n"
         f"Size: {full_size[0]} x {full_size[1]}\n"
@@ -518,6 +516,7 @@ async def generate_image(
     noise_scale_start: Annotated[float | None, Field(ge=0, le=32)] = None,
     noise_scale_end: Annotated[float | None, Field(ge=0, le=32)] = None,
     noise_clip_std: Annotated[float | None, Field(ge=0, le=32)] = None,
+    patch_grid_smoothing: PatchGridSmoothing = True,
     refine: bool = False,
     output_path: Annotated[str | None, Field(description="Optional .png path; relative paths use the MCP output directory.")] = None,
     overwrite: bool = False,
@@ -542,6 +541,7 @@ async def generate_image(
         noise_scale_start=noise_scale_start,
         noise_scale_end=noise_scale_end,
         noise_clip_std=noise_clip_std,
+        patch_grid_smoothing=patch_grid_smoothing,
     )
     return await _finish_batch(
         payload=payload,
@@ -564,7 +564,6 @@ async def edit_image(
     height: Dimension = 1024,
     seed: Seed = 32,
     keep_original_aspect: bool = True,
-    preserve_background_subject: Annotated[bool, Field(description="Preserve source colors and detail for simple solid-background requests when the local mask model is installed. Set false for generative editing.")] = True,
     scheduler: Scheduler = "auto",
     num_inference_steps: Annotated[int | None, Field(ge=1, le=100)] = None,
     guidance_scale: Annotated[float | None, Field(ge=0, le=20)] = None,
@@ -572,6 +571,7 @@ async def edit_image(
     noise_scale_start: Annotated[float | None, Field(ge=0, le=32)] = None,
     noise_scale_end: Annotated[float | None, Field(ge=0, le=32)] = None,
     noise_clip_std: Annotated[float | None, Field(ge=0, le=32)] = None,
+    patch_grid_smoothing: PatchGridSmoothing = True,
     refine: bool = False,
     output_path: Annotated[str | None, Field(description="Optional .png path; relative paths use the MCP output directory.")] = None,
     overwrite: bool = False,
@@ -597,8 +597,8 @@ async def edit_image(
         noise_scale_start=noise_scale_start,
         noise_scale_end=noise_scale_end,
         noise_clip_std=noise_clip_std,
+        patch_grid_smoothing=patch_grid_smoothing,
     )
-    payload["preserve_background_subject"] = preserve_background_subject
     return await _finish_batch(
         payload=payload,
         batch_size=batch_size,
@@ -629,6 +629,7 @@ async def compose_images(
     noise_scale_start: Annotated[float | None, Field(ge=0, le=32)] = None,
     noise_scale_end: Annotated[float | None, Field(ge=0, le=32)] = None,
     noise_clip_std: Annotated[float | None, Field(ge=0, le=32)] = None,
+    patch_grid_smoothing: PatchGridSmoothing = True,
     refine: bool = False,
     output_path: Annotated[str | None, Field(description="Optional .png path; relative paths use the MCP output directory.")] = None,
     overwrite: bool = False,
@@ -654,6 +655,7 @@ async def compose_images(
         noise_scale_start=noise_scale_start,
         noise_scale_end=noise_scale_end,
         noise_clip_std=noise_clip_std,
+        patch_grid_smoothing=patch_grid_smoothing,
     )
     return await _finish_batch(
         payload=payload,

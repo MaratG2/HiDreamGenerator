@@ -9,7 +9,6 @@ This is a community application and integration layer. The underlying model and 
 ## Features
 
 - React/TypeScript studio: text-to-image, single-image editing, live previews, copy/download, and sequential batches of up to four.
-- Optional local foreground masking for solid-background edits, preserving source colors and detail.
 - Flask API: strict validation, a bounded GPU queue, reconnectable SSE progress, and explicit mock mode.
 - MCP tools: generation, editing, composition from two to eight references, and optional prompt refinement.
 - Installable HiDream skill: automatic selection for local image requests, with guidance for dimensions, model defaults, and long-running jobs.
@@ -81,47 +80,35 @@ Copy `.env.example` to `.env` for local configuration. Keep `.env` private. Expl
 
 The default is the balanced dynamic SDNQ checkpoint, which keeps all decoder attention-output and MLP-down projections in BF16. The former `last8` low-VRAM default protects only the final eight layers' projections. Both retain all decoder layers; `full` identifies the model family, not full precision. The unused text-output head and prompt-embedding table stay on CPU for untied checkpoints, saving about 2.3 GiB of GPU weight storage. Only the selected prompt rows transfer to CUDA. Tokenwise MLP chunking also bounds temporary inference memory without changing weights or resolution. Runtime settings and PNG/MCP metadata identify the actual checkpoint.
 
-### Preserve the subject when changing a solid background
+### Patch-grid sampling
 
-Install the optional [BiRefNet](https://huggingface.co/ZhengPeng7/BiRefNet) foreground
-mask model after installing the real-inference requirements:
+HiDream predicts pixels in 32×32 patches, and the base model can leave a repeating
+grid. During the low-noise end of sampling (`sigma <= 0.2`), this application
+averages four HiDream predictions with different patch origins, realigning them
+before the solver update. Both conditional and unconditional predictions receive
+the same treatment. The outer boundary keeps the natural prediction to avoid
+cyclic-shift contamination. This follows the shifted-denoising approach discussed
+in the [upstream grid-artifact issue](https://github.com/HiDream-ai/HiDream-O1-Image/issues/8).
+For a single reference matching the render dimensions, its high-resolution
+conditioning pixels shift alongside the target to preserve their alignment.
 
-```powershell
-.\.venv\Scripts\python.exe scripts/install_background_model.py
-```
+This operates inside HiDream for creation, editing and composition. It does not
+segment the image, replace backgrounds, blur the final PNG, or paste source
+pixels over the result. The previous background-mask feature has been removed.
 
-In **Edit**, leave **Preserve subject for solid backgrounds** checked and use a
-simple instruction such as `Change the background to black` or
-`Set the background to #18324A`. The server predicts a local subject mask and
-composites the resized source onto that exact color. Confident subject pixels
-remain identical to the resized original. Soft edges are blended; when the old
-background is flat, its color spill is removed from those edges. Hair and other
-ambiguous boundaries still depend on mask quality.
-
-Only unambiguous, single-operation color requests use this path. Other edits
-continue through HiDream. Uncheck the option, or pass
-`preserve_background_subject=false` to the API/MCP edit tool, to force generative
-editing. Without the optional model, edits continue through HiDream.
-
-The result is labelled **Subject preserved**. PNG/MCP metadata reports
-`engine=background_composite`, the mask checkpoint, and the actual color;
-diffusion steps, guidance and seed have no effect on this deterministic edit.
-It uses the selected output dimensions directly. Batches produce the same pixels.
-No image is uploaded to another provider. The pinned model downloads once and
-inference uses local files only.
-
-This avoids the periodic texture and color drift observed when HiDream repaints
-the entire source for a background-only change. Tests on the same portrait still
-showed this texture with original unquantized BF16 weights and standard SDPA;
-changing checkpoint precision alone did not fix it. General generative edits
-can still show these artifacts. See [hardware notes](docs/WINDOWS.md).
+`patch_grid_smoothing` defaults to `true` in API/MCP requests and is recorded in
+effective PNG settings. Set it to `false` for a controlled comparison, or use
+`--no-patch_grid_smoothing` in the CLI. At 50 steps and shift 3 it adds nine
+denoiser evaluations per guidance branch. Final steps therefore take longer.
+Small text-only outputs now also render internally at approximately 4 MP, matching
+the model's training scale, before resizing to the requested export dimensions.
 
 ## Settings contract
 
 | Setting | Behavior |
 | --- | --- |
 | Output size | API dimensions are 512–4096 in multiples of 64. The returned PNG has the resolved output dimensions; unexpected dimensions are rejected. |
-| Reference render size | Generative edits/composition use a roughly 4 MP minimum internal pixel budget (2048×2048 for square images), bounded to 4096 per edge, then resize to the exact output. The former 2 MP speed compromise is no longer the default. Larger requested outputs keep their size. Both sizes are disclosed as `width`/`height` and `render_width`/`render_height`; smaller exports do not necessarily make edits faster. Text-only generation uses the requested canvas directly. |
+| Internal render size | Creation, editing and composition use a roughly 4 MP minimum internal pixel budget (2048×2048 for square images), bounded to 4096 per edge, then resize to the exact output. Larger requested outputs keep their size. Both sizes are disclosed as `width`/`height` and `render_width`/`render_height`; smaller exports do not necessarily make generation faster. |
 | Keep original aspect | One reference's proportions at the selected long edge, rounded to 64 pixels. It does not preserve the source's original pixel count. Extremely narrow sources are rejected. |
 | Quality | Full: 12/20/32/50 steps, default 50. Dev: 12/20/28/50, default 28. Fewer steps trade detail for speed; more steps do not guarantee better output. |
 | Edit guidance | Full edits default to guidance 1 to preserve source detail without amplifying compression artifacts. API/CLI/MCP callers can explicitly choose stronger guidance when needed. Progress previews include the selected guidance, matching the solver's prediction. |

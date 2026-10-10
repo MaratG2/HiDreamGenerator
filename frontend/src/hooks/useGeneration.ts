@@ -123,7 +123,7 @@ export function useGeneration() {
                 }));
               } else if (event.type === "done") {
                 finish(() => resolve({ imageUrl: `data:image/png;base64,${event.image}`, width: event.width,
-                  height: event.height, seed: event.seed, mock_mode: event.mock_mode, engine: event.engine }));
+                  height: event.height, seed: event.seed, mock_mode: event.mock_mode }));
               } else {
                 finish(() => reject(new Error(event.message)));
               }
@@ -143,7 +143,7 @@ export function useGeneration() {
               step: current.items[index]?.total ?? itemRequest.num_inference_steps,
               previewUrl: null,
               resultUrl: result.imageUrl,
-              width: result.width, height: result.height, mockMode: result.mock_mode, engine: result.engine,
+              width: result.width, height: result.height, mockMode: result.mock_mode,
             }),
             index + 1,
             index + 1 < batchSize ? { phase: "starting" } : {},

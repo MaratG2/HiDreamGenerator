@@ -19,7 +19,6 @@ interface WorkspaceProps {
   sourceImage: SourceImage | null;
   generation: GenerationState;
   selectedImageUrl: string | null;
-  selectedEngine?: string;
   mockMode: boolean;
   notice: string | null;
   onDownload: (url: string, seed?: number) => void;
@@ -27,7 +26,7 @@ interface WorkspaceProps {
 }
 
 const phaseLabel = (item: BatchItemState) => {
-  if (item.phase === "complete") return item.engine === "background_composite" ? "Subject preserved" : "Complete";
+  if (item.phase === "complete") return "Complete";
   if (item.phase === "generating") return `Step ${item.step} of ${item.total}`;
   if (item.phase === "starting") return "Starting";
   if (item.phase === "error") return "Failed";
@@ -84,7 +83,7 @@ function BatchSlot({ item, onCopy, onDownload }: {
   );
 }
 
-export function Workspace({ mode, sourceImage, generation, selectedImageUrl, selectedEngine, mockMode, notice, onDownload, onCopy }: WorkspaceProps) {
+export function Workspace({ mode, sourceImage, generation, selectedImageUrl, mockMode, notice, onDownload, onCopy }: WorkspaceProps) {
   const hasBatch = generation.items.length > 0;
   const completed = generation.items.filter((item) => item.phase === "complete").length;
   const overall = hasBatch
@@ -139,7 +138,7 @@ export function Workspace({ mode, sourceImage, generation, selectedImageUrl, sel
         <div className="single-workspace">
           <figure className="single-result-frame"><img src={idleImage} alt={selectedImageUrl ? "Selected result" : "Source image"} /></figure>
           <div className="stage-caption">
-            <span>{selectedImageUrl ? selectedEngine === "background_composite" ? "Result · Subject preserved" : "Result" : sourceImage ? `Source · ${sourceImage.width} × ${sourceImage.height}` : "Image"}</span>
+            <span>{selectedImageUrl ? "Result" : sourceImage ? `Source · ${sourceImage.width} × ${sourceImage.height}` : "Image"}</span>
             {selectedImageUrl ? <div className="caption-actions"><button className="download-action" type="button" onClick={() => onCopy(idleImage)}><Copy size={16} />Copy</button><button className="download-action" type="button" onClick={() => onDownload(idleImage)}><Download size={16} />Download PNG</button></div> : null}
           </div>
         </div>

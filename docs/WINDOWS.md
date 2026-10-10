@@ -145,40 +145,33 @@ generative editing does not guarantee a flat color or unchanged source pixels.
 Progress previews now show the guided prediction instead of the cleaner
 conditional branch that previously concealed this difference.
 
-### Solid-background quality and precision checks
+### Native patch-grid correction
 
-For source-preserving solid-color edits, install the pinned BiRefNet model:
+The background-mask shortcut has been removed. All image requests use HiDream.
+The default sampler now realigns and averages four denoiser predictions during
+its final low-noise steps. A matching single-image reference shifts with the
+target, avoiding the detail loss caused by misaligned reference conditioning.
+No segmentation, source-pixel compositing, output blur or saturation filter is
+applied. Text-only generation now also uses the roughly 4 MP internal canvas.
 
-```powershell
-.\.venv\Scripts\python.exe scripts/install_background_model.py
-```
+Completed local checks used the balanced full checkpoint on the RTX 5060 Ti:
 
-The studio's **Preserve subject for solid backgrounds** option then handles
-simple color changes using a foreground mask. It avoids repainting the subject,
-preserves opaque source pixels at the export size, and produces exact background
-RGB values. One 1024×1024 portrait edit completed through the real API in 5.2
-seconds with the quantized HiDream model still loaded. This is one observed run,
-not a throughput guarantee. The mask model returns to CPU after each edit;
-inference falls back to CPU when less than 6 GiB of GPU memory is free.
+- A 50-step, guidance-1 portrait edit took 254 seconds. In a flat 128×128
+  background crop, the repeating-grid RMS fell from 0.467 in the earlier
+  guidance-1 output to 0.152. This is a crop-specific reduction, not a guarantee
+  that every artifact disappears.
+- A same-prompt/seed 2048×2048 text-generation comparison visibly reduced the
+  grid on both the background and objects. The unchanged early model predictions
+  were cached for the second run; its elapsed time is not a full-run benchmark.
+- The color drift remains unresolved: the portrait's sampled face saturation
+  stayed near 0.38 versus about 0.42 in the source. Increasing guidance did not
+  correct it, so edit guidance remains 1. The generated background also remains
+  dark blue-gray rather than exact RGB black.
 
-Controlled portrait tests at 50 steps, guidance 1, shift 3, 2048×2048 internal
-resolution and seed 32 still showed the periodic dot texture after separately
-testing FP32 solver state, original output-head weights, standard SDPA, and the
-original unquantized checkpoint loaded in BF16. The unquantized run was slower
-and still changed source colors. The dynamic SDNQ model remains the normal
-generative default. The solver now accumulates updates in FP32 to avoid rounding
-away small steps, but this alone did not visibly remove the pattern.
-
-For optional checkpoint diagnostics, `scripts/prepare_full_checkpoint.py`
-downloads a pinned original snapshot and prepares a BF16 copy shard by shard.
-It retains all layers and avoids allocating the original FP32 checkpoint on the
-GPU before conversion. Allow roughly 53 GB for both source and converted weights.
-Use a separate directory from any SDNQ checkpoint. `HIDREAM_OFFLOAD_LAYERS=N`
-can place the first N decoder blocks on CPU; each block is transferred to the GPU
-as needed. It trades substantial speed for lower GPU residency. Default 0 is
-appropriate for the normal quantized setup. This offload path has numerical
-regression coverage; full-model performance for arbitrary CPU splits has not
-been benchmarked.
+The full checkpoint remains the default. Alternative checkpoints and a proposed
+lower-noise final sampling step have not been validated in this environment and
+are not enabled. The retained change reduces native grid artifacts; it does not
+claim to fix all color drift.
 
 ### Windows acceleration and measured speed
 

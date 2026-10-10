@@ -18,7 +18,6 @@ export interface BatchItemState {
   width?: number;
   height?: number;
   mockMode?: boolean;
-  engine?: string;
 }
 
 export interface AspectPreset {
@@ -43,7 +42,6 @@ export interface QualityPreset {
 export interface RuntimeSettings {
   mock_mode: boolean;
   model_loaded: boolean;
-  background_edit_available?: boolean;
   model_type: string;
   attention_backend: string;
   checkpoint?: { id: string; quantization: string; variant: string | null } | null;
@@ -65,7 +63,6 @@ export interface GenerationRequest {
   seed: number;
   refs_b64: string[];
   keep_original_aspect: boolean;
-  preserve_background_subject?: boolean;
   editing_scheduler?: EditMethod;
   num_inference_steps: number;
 }
@@ -82,7 +79,6 @@ export interface HistoryItem {
   height: number;
   createdAt: number;
   mockMode: boolean;
-  engine?: string;
 }
 
 export interface GenerationResult {
@@ -91,5 +87,4 @@ export interface GenerationResult {
   height: number;
   seed: number;
   mock_mode: boolean;
-  engine?: string;
 }

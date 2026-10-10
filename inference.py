@@ -65,6 +65,8 @@ def main():
     p.add_argument("--noise_scale_start", type=float, default=None)
     p.add_argument("--noise_scale_end", type=float, default=None)
     p.add_argument("--noise_clip_std", type=float, default=None)
+    p.add_argument("--patch_grid_smoothing", action=argparse.BooleanOptionalAction, default=True,
+                   help="Average shifted HiDream predictions at low noise to reduce the patch grid.")
     p.add_argument(
         "--editing_scheduler",
         type=str,

@@ -47,8 +47,9 @@ class GenerationSettingsTests(unittest.TestCase):
         prune_jobs(jobs)
         self.assertEqual(list(jobs), ["active"])
 
-    def test_reference_render_canvas_preserves_output_contract(self):
-        self.assertEqual(render_dimensions(768, 576, False), (768, 576))
+    def test_all_modes_use_training_resolution_without_changing_export(self):
+        self.assertEqual(render_dimensions(768, 576, False), (2368, 1792))
+        self.assertEqual(render_dimensions(1024, 1024, False), (2048, 2048))
         self.assertEqual(render_dimensions(768, 576, True), (2368, 1792))
         self.assertEqual(render_dimensions(1024, 1024, True), (2048, 2048))
         self.assertEqual(render_dimensions(1472, 1472, True), (2048, 2048))
@@ -60,3 +61,10 @@ class GenerationSettingsTests(unittest.TestCase):
             self.assertLessEqual(max(rw, rh), 4096)
             self.assertEqual(rw % 64, 0)
             self.assertEqual(rh % 64, 0)
+
+    def test_patch_grid_control_is_explicit_and_validated(self):
+        for mode in ("t2i", "edit", "subject"):
+            self.assertTrue(resolve_settings("full", mode, {})["patch_grid_smoothing"])
+            self.assertFalse(resolve_settings("full", mode, {"patch_grid_smoothing": False})["patch_grid_smoothing"])
+        with self.assertRaises(ValueError):
+            resolve_settings("full", "edit", {"patch_grid_smoothing": "false"})

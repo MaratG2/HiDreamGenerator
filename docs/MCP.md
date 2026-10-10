@@ -146,16 +146,6 @@ MCP process working directory; absolute paths are safest.
 }
 ```
 
-For simple solid-color background instructions, `edit_image` defaults to
-`preserve_background_subject=true`. If the optional local BiRefNet model is
-installed, the server keeps the source subject and composites it onto the
-requested color. `get_status` exposes `background_edit_available`. This path
-ignores diffusion controls and seed, renders at the output size, and records
-`engine=background_composite` with the mask checkpoint in PNG/sidecar metadata.
-Set `preserve_background_subject=false` for a generative edit. More complex
-instructions and installations without the mask model continue through HiDream.
-See the [installation and behavior details](../README.md#preserve-the-subject-when-changing-a-solid-background).
-
 ### `compose_images`
 
 Subject-driven generation from two to eight local reference images:
@@ -178,11 +168,12 @@ All generation tools support the relevant subset of these parameters:
 
 | Parameter | Default | Notes |
 | --- | ---: | --- |
-| `width`, `height` | `1024` | Output size, 512-4096 in multiples of 64; reference generation uses a larger internal canvas when needed |
+| `width`, `height` | `1024` | Output size, 512-4096 in multiples of 64; all modes use a larger internal canvas when needed |
 | `seed` | `32` | 0-4294967295 |
 | `scheduler` | `auto` | `default`, `flow_match`, or `flash` override |
 | `num_inference_steps` | model default | 1-100; the standard 28-step dev count preserves its trained schedule |
 | `guidance_scale` | model default | 0-20 |
+| `patch_grid_smoothing` | `true` | Average shifted HiDream predictions at low noise; affects creation, editing and composition |
 | `shift` | model default | Greater than 0, up to 20 |
 | `noise_scale_start/end` | model default | Initial noise / Flash noise schedule, 0-32 |
 | `noise_clip_std` | model default | Flash scheduler control, 0-32 |
@@ -233,9 +224,9 @@ through the SDK's in-memory MCP client:
 
 With `keep_original_aspect=true`, `max(width, height)` selects the long edge and
 source proportions are rounded to 64 pixels. Both output dimensions are explicit
-when that flag is false. Reference-conditioned generation renders internally at
-at least roughly 4 MP (2048×2048 for square edits, up to 4096 per edge) and then resizes to the selected output; small
-export sizes do not make editing faster. Inputs must be
+when that flag is false. All generation modes render internally at
+at least roughly 4 MP (2048×2048 for square images, up to 4096 per edge) and then resize to the selected output; small
+export sizes do not make generation faster. Inputs must be
 PNG/JPEG/WebP, no larger than 24 MB or 24 megapixels each, within the API's 64 MB
 request limit. Batches must not overflow the maximum seed.
 

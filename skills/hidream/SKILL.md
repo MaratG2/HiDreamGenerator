@@ -58,7 +58,7 @@ reference's role in the prompt.
   steps, guidance 0, shift 1. Do not choose the
   checkpoint type through a generation argument; the backend is already loaded.
   `noise_scale_end` and `noise_clip_std` apply only to the Flash scheduler.
-- Small edits and compositions render internally at about 4 MP (2048x2048 for square edits) before resizing
+- All generation modes render internally at about 4 MP (2048x2048 for square images) before resizing
   to the output size. A small export need not make an edit fast. `preview_max_side`
   limits the tool preview only; it does not change the saved PNG dimensions.
 - Keep prompt refinement off unless requested. It uses a separate refiner service
@@ -67,17 +67,12 @@ reference's role in the prompt.
 
 ## Run and recover
 
-For simple solid-color background requests, `edit_image` defaults to
-`preserve_background_subject=true`. When `get_status` reports
-`background_edit_available`, this can use a local foreground mask and exact color
-compositing instead of repainting the source. Use a simple instruction such as
-"Change the background to black". Do not promise exact source preservation for
-general generative edits. Pass `preserve_background_subject=false` when the user
-explicitly wants HiDream to regenerate the image. Inspect the returned `engine`:
-`background_composite` preserves opaque pixels at the export size, ignores
-diffusion controls and seed, and does not use the 4 MP render canvas. Batches of
-these edits produce identical pixels. Report it as a subject-preserving local
-background edit, with the actual mask model, rather than HiDream diffusion.
+All real edits run through HiDream; there is no background-mask shortcut.
+`patch_grid_smoothing=true` averages shifted model predictions at low noise in
+creation, editing and composition. Final steps take longer. Leave it enabled
+unless the user requests a controlled comparison. The actual setting is saved
+in PNG/MCP metadata. It reduces patch artifacts; do not promise a perfectly
+artifact-free output or pixel-identical preservation of the source.
 
 Use one generation call at a time. For requested variations, use `batch_size`
 from 1 to 4; images run sequentially with incrementing seeds. Use a new seed range
