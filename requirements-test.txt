@@ -1,6 +1,7 @@
 # API, mock server and MCP tests do not need CUDA or downloaded checkpoints.
 flask>=3.1,<4
 pillow>=11
+numpy>=2,<3
 python-dotenv
 openai
 httpx>=0.27,<1

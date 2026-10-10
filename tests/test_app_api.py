@@ -39,6 +39,37 @@ class HiDreamAPIContractTests(unittest.TestCase):
         self.assertEqual(invalid.status_code, 400)
         self.assertIn("multiple of 64", invalid.get_json()["error"])
 
+    def test_background_edits_preserve_source_and_report_the_actual_engine(self):
+        reference = io.BytesIO()
+        Image.new("RGB", (64, 64), (25, 60, 140)).save(reference, "PNG")
+        payload = {"prompt": "Change the background to fully one colored solid black", "mode": "edit",
+                   "width": 512, "height": 512, "refs_b64": [base64.b64encode(reference.getvalue()).decode()]}
+
+        def composite(source, color, size, callback):
+            self.assertEqual(source.getpixel((32, 32)), (25, 60, 140))
+            self.assertEqual(color, "#000000")
+            return source.resize(size)
+
+        with patch.object(app_module.background_edit, "available", return_value=True), \
+             patch.object(app_module.background_edit, "replace_background", side_effect=composite) as editor, \
+             patch.object(app_module, "generate_image", return_value=Image.new("RGB", (512, 512))) as generator:
+            started = self.client.post("/api/generate/start", json=payload).get_json()
+            stream = self.client.get(f"/api/generate/stream/{started['job_id']}").get_data(as_text=True)
+            done = [json.loads(line[6:]) for line in stream.splitlines() if line.startswith("data: ")][-1]
+            self.assertEqual(done["type"], "done")
+            self.assertEqual(done["engine"], "background_composite")
+            self.assertEqual(done["parameters"], {"background_color": "#000000", "preserve_subject": True})
+            self.assertEqual(done["render_width"], 512)
+            editor.assert_called_once()
+            generator.assert_not_called()
+            image = Image.open(io.BytesIO(base64.b64decode(done["image"])))
+            self.assertEqual(json.loads(image.info["hidream"])["engine"], "background_composite")
+
+            payload["preserve_background_subject"] = False
+            started = self.client.post("/api/generate/start", json=payload).get_json()
+            self.client.get(f"/api/generate/stream/{started['job_id']}").get_data()
+            generator.assert_called_once()
+
     def test_mock_mode_is_off_by_default_and_runtime_toggle_is_explicit(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             self.assertFalse(app_module._env_flag("HIDREAM_MOCK_MODE", False))

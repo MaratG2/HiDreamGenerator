@@ -30,6 +30,7 @@ export default function App() {
   const [batchSize, setBatchSize] = useState(1);
   const [seed, setSeed] = useState(32);
   const [keepOriginalAspect, setKeepOriginalAspect] = useState(true);
+  const [preserveBackgroundSubject, setPreserveBackgroundSubject] = useState(true);
   const [editMethod, setEditMethod] = useState<EditMethod>("flow_match");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -123,6 +124,7 @@ export default function App() {
       seed,
       refs_b64: sourceImage && mode === "edit" ? [sourceImage.base64] : [],
       keep_original_aspect: mode === "edit" && keepOriginalAspect,
+      preserve_background_subject: mode === "edit" ? preserveBackgroundSubject : undefined,
       editing_scheduler: runtime?.model_type === "dev" && mode === "edit" ? editMethod : undefined,
       num_inference_steps: quality.steps,
     };
@@ -138,6 +140,7 @@ export default function App() {
         width: result.width,
         height: result.height,
         mockMode: result.mock_mode,
+        engine: result.engine,
         createdAt: Date.now(),
       };
       setHistory((current) => [item, ...current].slice(0, 40));
@@ -191,6 +194,8 @@ export default function App() {
           batchSize={batchSize}
           seed={seed}
           keepOriginalAspect={keepOriginalAspect}
+          preserveBackgroundSubject={preserveBackgroundSubject}
+          backgroundEditAvailable={!!runtime?.background_edit_available}
           editMethod={editMethod}
           isBusy={interactionBusy}
           isGenerating={isBusy}
@@ -209,6 +214,7 @@ export default function App() {
           onBatchSizeChange={setBatchSize}
           onSeedChange={setSeed}
           onKeepOriginalAspectChange={setKeepOriginalAspect}
+          onPreserveBackgroundSubjectChange={setPreserveBackgroundSubject}
           onEditMethodChange={setEditMethod}
           onRefine={handleRefine}
           onGenerate={handleGenerate}
@@ -219,6 +225,7 @@ export default function App() {
             sourceImage={sourceImage}
             generation={generation}
             selectedImageUrl={selectedItem?.imageUrl ?? null}
+            selectedEngine={selectedItem?.engine}
             mockMode={generation.items.length ? !!generation.items[0]?.mockMode || (isBusy && !!runtime?.mock_mode) : selectedItem?.mockMode ?? false}
             notice={notice}
             onDownload={download}

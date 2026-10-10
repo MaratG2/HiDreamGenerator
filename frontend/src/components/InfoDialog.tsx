@@ -38,7 +38,7 @@ export function InfoDialog({ panel, runtime, runtimeBusy, onMockModeChange, onCl
             <p className="runtime-warning"><AlertTriangle size={15} strokeWidth={1.7} />Off by default. Mock images are visibly labelled and are never model output.</p>
           </>
         ) : (
-          <div className="help-copy"><p><strong>Create</strong> turns a text description into one to four new images.</p><p><strong>Edit</strong> uses one source image and your change instructions. Small edits render at about 4 MP, then resize to the selected output size. Editing regenerates the image, so unchanged details can vary.</p><p><strong>Refine prompt</strong> calls the configured prompt model; it never adds canned text.</p><p>The first real run can be slower while Triton compiles local GPU kernels.</p></div>
+          <div className="help-copy"><p><strong>Create</strong> turns a text description into one to four new images.</p><p><strong>Edit</strong> uses one source image and your change instructions. With subject preservation enabled, simple solid-background requests keep the original colors and detail. Other edits regenerate the image at about 4 MP before resizing to the output size, so unchanged details can vary.</p><p><strong>Refine prompt</strong> calls the configured prompt model; it never adds canned text.</p><p>The first real run can be slower while Triton compiles local GPU kernels.</p></div>
         )}
       </dialog>
   );

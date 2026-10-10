@@ -97,6 +97,7 @@ class HiDreamStatus(BaseModel):
     max_concurrent_generations: int | None = None
     mock_mode: bool = False
     checkpoint: dict | None = None
+    background_edit_available: bool = False
     error: str | None = None
 
 
@@ -106,6 +107,7 @@ class HiDreamRuntime(BaseModel):
     model_type: str
     attention_backend: str
     checkpoint: dict | None = None
+    background_edit_available: bool = False
 
 
 def _api_url(path: str) -> str:
@@ -364,6 +366,7 @@ async def _finish_generation(
         "mock_mode": effective.get("mock_mode"),
         "model_type": effective.get("model_type"),
         "checkpoint": effective.get("checkpoint"),
+        "engine": effective.get("engine"),
         "sha256": hashlib.sha256(png).hexdigest(),
         "duration_seconds": round(time.monotonic() - started, 2),
     }
@@ -373,8 +376,11 @@ async def _finish_generation(
         overwrite,
     )
 
+    result_description = ("Background replaced with the original subject preserved."
+                          if effective.get("engine") == "background_composite"
+                          else f"HiDream {payload['mode']} generation completed{' (MOCK OUTPUT)' if effective.get('mock_mode') else ''}.")
     summary = (
-        f"HiDream {payload['mode']} generation completed{' (MOCK OUTPUT)' if effective.get('mock_mode') else ''}.\n"
+        f"{result_description}\n"
         f"Full PNG: {path}\n"
         f"Metadata: {metadata_path}\n"
         f"Size: {full_size[0]} x {full_size[1]}\n"
@@ -558,6 +564,7 @@ async def edit_image(
     height: Dimension = 1024,
     seed: Seed = 32,
     keep_original_aspect: bool = True,
+    preserve_background_subject: Annotated[bool, Field(description="Preserve source colors and detail for simple solid-background requests when the local mask model is installed. Set false for generative editing.")] = True,
     scheduler: Scheduler = "auto",
     num_inference_steps: Annotated[int | None, Field(ge=1, le=100)] = None,
     guidance_scale: Annotated[float | None, Field(ge=0, le=20)] = None,
@@ -591,6 +598,7 @@ async def edit_image(
         noise_scale_end=noise_scale_end,
         noise_clip_std=noise_clip_std,
     )
+    payload["preserve_background_subject"] = preserve_background_subject
     return await _finish_batch(
         payload=payload,
         batch_size=batch_size,

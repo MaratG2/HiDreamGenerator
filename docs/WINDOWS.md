@@ -145,6 +145,41 @@ generative editing does not guarantee a flat color or unchanged source pixels.
 Progress previews now show the guided prediction instead of the cleaner
 conditional branch that previously concealed this difference.
 
+### Solid-background quality and precision checks
+
+For source-preserving solid-color edits, install the pinned BiRefNet model:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/install_background_model.py
+```
+
+The studio's **Preserve subject for solid backgrounds** option then handles
+simple color changes using a foreground mask. It avoids repainting the subject,
+preserves opaque source pixels at the export size, and produces exact background
+RGB values. One 1024×1024 portrait edit completed through the real API in 5.2
+seconds with the quantized HiDream model still loaded. This is one observed run,
+not a throughput guarantee. The mask model returns to CPU after each edit;
+inference falls back to CPU when less than 6 GiB of GPU memory is free.
+
+Controlled portrait tests at 50 steps, guidance 1, shift 3, 2048×2048 internal
+resolution and seed 32 still showed the periodic dot texture after separately
+testing FP32 solver state, original output-head weights, standard SDPA, and the
+original unquantized checkpoint loaded in BF16. The unquantized run was slower
+and still changed source colors. The dynamic SDNQ model remains the normal
+generative default. The solver now accumulates updates in FP32 to avoid rounding
+away small steps, but this alone did not visibly remove the pattern.
+
+For optional checkpoint diagnostics, `scripts/prepare_full_checkpoint.py`
+downloads a pinned original snapshot and prepares a BF16 copy shard by shard.
+It retains all layers and avoids allocating the original FP32 checkpoint on the
+GPU before conversion. Allow roughly 53 GB for both source and converted weights.
+Use a separate directory from any SDNQ checkpoint. `HIDREAM_OFFLOAD_LAYERS=N`
+can place the first N decoder blocks on CPU; each block is transferred to the GPU
+as needed. It trades substantial speed for lower GPU residency. Default 0 is
+appropriate for the normal quantized setup. This offload path has numerical
+regression coverage; full-model performance for arbitrary CPU splits has not
+been benchmarked.
+
 ### Windows acceleration and measured speed
 
 The upstream [`flash-attn`](https://github.com/Dao-AILab/flash-attention) package

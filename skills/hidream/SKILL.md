@@ -67,6 +67,18 @@ reference's role in the prompt.
 
 ## Run and recover
 
+For simple solid-color background requests, `edit_image` defaults to
+`preserve_background_subject=true`. When `get_status` reports
+`background_edit_available`, this can use a local foreground mask and exact color
+compositing instead of repainting the source. Use a simple instruction such as
+"Change the background to black". Do not promise exact source preservation for
+general generative edits. Pass `preserve_background_subject=false` when the user
+explicitly wants HiDream to regenerate the image. Inspect the returned `engine`:
+`background_composite` preserves opaque pixels at the export size, ignores
+diffusion controls and seed, and does not use the 4 MP render canvas. Batches of
+these edits produce identical pixels. Report it as a subject-preserving local
+background edit, with the actual mask model, rather than HiDream diffusion.
+
 Use one generation call at a time. For requested variations, use `batch_size`
 from 1 to 4; images run sequentially with incrementing seeds. Use a new seed range
 for subsequent batches, staying within 0-4294967295. Keep the same seed for a

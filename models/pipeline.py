@@ -125,6 +125,14 @@ def generate_image(
         use_flash_attn: bool = None,
 ) -> Image.Image:
     device = model.device
+    # Accelerate can park the first parameter on meta when the vision encoder
+    # is offloaded. New inputs belong on the execution GPU, not that placeholder.
+    if device.type == "meta":
+        mapped_devices = getattr(model, "hf_device_map", {}).values()
+        target = next((d for d in mapped_devices if d not in ("cpu", "disk", "meta")), None)
+        if target is None:
+            raise ValueError("The offloaded model has no accelerator execution device")
+        device = torch.device(f"cuda:{target}" if isinstance(target, int) else target)
     dtype = torch.bfloat16
     model_config = model.config
     tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
@@ -332,10 +340,12 @@ def generate_image(
                 "image_grid_thw": proc.image_grid_thw.to(device),
             })
 
+    # Keep the evolving image in FP32 so small late-step corrections survive.
+    # Only denoiser inputs are lowered to the model's compute precision.
     noise = noise_scale_start * torch.randn(
         (1, 3, height, width),
         generator=torch.Generator('cpu').manual_seed(seed + 1),
-    ).to(device, dtype)
+    ).to(device, torch.float32)
     z = einops.rearrange(noise, 'B C (H p1) (W p2) -> B (H W) (C p1 p2)', p1=PATCH_SIZE, p2=PATCH_SIZE)
 
     sched = build_scheduler(num_inference_steps, timesteps_list, shift, device, scheduler_name)
@@ -357,7 +367,7 @@ def generate_image(
             kwargs = {
                 "input_ids": sample['input_ids'],
                 "position_ids": sample['position_ids'],
-                "vinputs": z_in,
+                "vinputs": z_in.to(dtype),
                 "timestep": t_pixeldit.reshape(-1).to(device),
                 "token_types": sample['token_types'],
                 "use_flash_attn": use_flash_attn,
@@ -406,7 +416,7 @@ def generate_image(
             else:
                 v_guided = v_cond
         else:
-            vinputs = torch.cat([z, ref_patches], dim=1)
+            vinputs = torch.cat([z.to(dtype), ref_patches], dim=1)
             x_vis_list = []
             for sample in samples:
                 xp, emb, ds_emb = forward_once(
@@ -441,9 +451,9 @@ def generate_image(
         model_output = -v_guided
         # model_output = clamp_tensor(model_output, percentage = 0.05)
         if scheduler_name == "flash":
-            z = sched.step(model_output.float(), step_t.to(dtype=torch.float32), z.float(), s_noise=noise_scale_schedule[step_idx], noise_clip_std=noise_clip_std, return_dict=False)[0].to(dtype)
+            z = sched.step(model_output.float(), step_t.to(dtype=torch.float32), z.float(), s_noise=noise_scale_schedule[step_idx], noise_clip_std=noise_clip_std, return_dict=False)[0]
         else:
-            z = sched.step(model_output.float(), step_t.to(dtype=torch.float32), z.float(), return_dict=False)[0].to(dtype)
+            z = sched.step(model_output.float(), step_t.to(dtype=torch.float32), z.float(), return_dict=False)[0]
 
         if callback is not None:
             try:
@@ -454,7 +464,7 @@ def generate_image(
             except Exception:
                 pass
 
-    img = (z + 1) / 2
+    img = (z.float() + 1) / 2
     img = einops.rearrange(img.cpu().float(), 'B (H W) (C p1 p2) -> B C (H p1) (W p2)', H=h_patches, W=w_patches, p1=PATCH_SIZE, p2=PATCH_SIZE)
     arr = np.round(np.clip(img[0].numpy().transpose(1, 2, 0) * 255, 0, 255)).astype(np.uint8)
     image = Image.fromarray(arr).convert("RGB")

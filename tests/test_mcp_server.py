@@ -199,6 +199,16 @@ class HiDreamMCPTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(edit_payload["mode"], "edit")
             self.assertEqual(len(edit_payload["refs_b64"]), 1)
             self.assertTrue(edit_payload["keep_original_aspect"])
+            self.assertTrue(edit_payload["preserve_background_subject"])
+
+            forced = await client.call_tool("edit_image", {
+                "prompt": "Change the background to black",
+                "source_image_path": str(self.source_a),
+                "preserve_background_subject": False,
+                "output_path": "generative-edit.png",
+            })
+            self.assertFalse(forced.is_error)
+            self.assertFalse(FakeHiDreamHandler.payloads[-1]["preserve_background_subject"])
 
             composed = await client.call_tool(
                 "compose_images",

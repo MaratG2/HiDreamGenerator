@@ -8,6 +8,8 @@ numpy
 pillow
 tqdm
 scipy
+timm>=1.0,<2
+kornia>=0.7,<1
 flask>=3.1,<4
 python-dotenv
 openai

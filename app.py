@@ -38,6 +38,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 from generation_settings import aspect_dimensions, number, render_dimensions, resolve_settings, validate_dimensions
 from generation_jobs import GenerationJob, MAX_ACTIVE_JOBS, prune_jobs
 from model_runtime import checkpoint_metadata, configure_image_memory, image_device_map
+import background_edit
 from prompt_agent_v2 import DEFAULT_BASE_URL, DEFAULT_MODEL_ID, refine_prompt
 
 
@@ -873,6 +874,7 @@ def api_status():
         "attention_backend": os.environ.get("HIDREAM_ATTENTION_BACKEND", "auto"),
         "supported_modes": ["t2i", "edit", "subject"],
         "supported_schedulers": ["default", "flow_match", "flash"],
+        "background_edit_available": background_edit.available(),
         "max_concurrent_generations": 1,
     })
 
@@ -893,6 +895,7 @@ def api_runtime():
     return jsonify({
         "mock_mode": _STATE["mock_mode"],
         "model_loaded": _STATE["model"] is not None,
+        "background_edit_available": background_edit.available(),
         "model_type": _STATE["model_type"],
         "checkpoint": _STATE.get("checkpoint"),
         "attention_backend": os.environ.get("HIDREAM_ATTENTION_BACKEND", "auto"),
@@ -939,7 +942,7 @@ def api_generate_start():
         data = request_object()
         allowed = {"prompt", "mode", "width", "height", "seed", "refs_b64", "keep_original_aspect",
                    "editing_scheduler", "scheduler_name", "num_inference_steps", "guidance_scale",
-                   "shift", "noise_scale_start", "noise_scale_end", "noise_clip_std"}
+                   "shift", "noise_scale_start", "noise_scale_end", "noise_clip_std", "preserve_background_subject"}
         unknown = set(data) - allowed
         if unknown:
             raise ValueError(f"Unknown generation settings: {', '.join(sorted(unknown))}")
@@ -963,6 +966,9 @@ def api_generate_start():
             raise ValueError("keep_original_aspect must be a boolean")
         if keep_original_aspect and mode != "edit":
             raise ValueError("keep_original_aspect is only available in edit mode")
+        preserve_subject = data.get("preserve_background_subject", True)
+        if not isinstance(preserve_subject, bool):
+            raise ValueError("preserve_background_subject must be a boolean")
         generation_kwargs = resolve_settings(_STATE["model_type"], mode, data)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
@@ -983,19 +989,26 @@ def api_generate_start():
     q = GenerationJob()
     with _JOBS_LOCK:
         mock_mode = _STATE["mock_mode"]
-        if not mock_mode and (_STATE["model"] is None or _STATE["processor"] is None):
+        background_color = (background_edit.background_color_for_prompt(prompt)
+                            if not mock_mode and mode == "edit" and preserve_subject and background_edit.available() else None)
+        if not mock_mode and not background_color and (_STATE["model"] is None or _STATE["processor"] is None):
             _ADMISSION.release()
             return jsonify({"error": "The HiDream model is not loaded; start the server with a checkpoint or enable mock mode"}), 503
         prune_jobs(_JOBS)
         _JOBS[job_id] = q
-    render_width, render_height = (width, height) if mock_mode else render_dimensions(width, height, bool(refs))
+    render_width, render_height = (width, height) if mock_mode or background_color else render_dimensions(width, height, bool(refs))
     metadata = {
         "width": width, "height": height, "seed": seed, "mode": mode,
         "render_width": render_width, "render_height": render_height,
         "mock_mode": mock_mode, "model_type": _STATE["model_type"],
         "checkpoint": None if mock_mode else _STATE.get("checkpoint"),
         "parameters": generation_kwargs,
+        "engine": "mock" if mock_mode else "hidream",
     }
+    if background_color:
+        metadata.update(engine="background_composite", model_type="segmentation",
+                        checkpoint=background_edit.checkpoint_metadata(),
+                        parameters={"background_color": background_color, "preserve_subject": True})
 
     def worker():
         tmp_paths = []
@@ -1063,6 +1076,9 @@ def api_generate_start():
                 q.put({"type": "progress", "step": 2, "total": 2})
                 if mock_step_delay:
                     time.sleep(mock_step_delay)
+            elif background_color:
+                with _GEN_LOCK:
+                    image = background_edit.replace_background(refs[0], background_color, (width, height), cb)
             else:
                 if _STATE["model"] is None or _STATE["processor"] is None:
                     raise RuntimeError(

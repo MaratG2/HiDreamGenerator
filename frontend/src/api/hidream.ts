@@ -10,7 +10,7 @@ interface StartResponse extends ErrorResponse {
 
 export type JobEvent =
   | { type: "progress"; step: number; total: number; preview?: string }
-  | { type: "done"; image: string; width: number; height: number; seed: number; mock_mode: boolean }
+  | { type: "done"; image: string; width: number; height: number; seed: number; mock_mode: boolean; engine?: string }
   | { type: "error"; message: string };
 
 async function parseResponse<T extends ErrorResponse>(response: Response): Promise<T> {

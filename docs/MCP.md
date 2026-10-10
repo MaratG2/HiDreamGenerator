@@ -146,6 +146,16 @@ MCP process working directory; absolute paths are safest.
 }
 ```
 
+For simple solid-color background instructions, `edit_image` defaults to
+`preserve_background_subject=true`. If the optional local BiRefNet model is
+installed, the server keeps the source subject and composites it onto the
+requested color. `get_status` exposes `background_edit_available`. This path
+ignores diffusion controls and seed, renders at the output size, and records
+`engine=background_composite` with the mask checkpoint in PNG/sidecar metadata.
+Set `preserve_background_subject=false` for a generative edit. More complex
+instructions and installations without the mask model continue through HiDream.
+See the [installation and behavior details](../README.md#preserve-the-subject-when-changing-a-solid-background).
+
 ### `compose_images`
 
 Subject-driven generation from two to eight local reference images:
