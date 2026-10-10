@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 from generation_settings import DEFAULT_TIMESTEPS, aspect_dimensions, render_dimensions, resolve_settings
-from generation_jobs import GenerationJob, MAX_RETAINED_JOBS, prune_jobs
+from generation_jobs import GenerationJob, JOB_TTL_SECONDS, MAX_RETAINED_JOBS, prune_jobs
 
 
 class GenerationSettingsTests(unittest.TestCase):
@@ -27,7 +28,8 @@ class GenerationSettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             aspect_dimensions(100000, 1, 1024)
 
-    def test_retention_prunes_finished_jobs_only(self):
+    @patch("generation_jobs.time.monotonic", return_value=100.0)
+    def test_retention_prunes_finished_jobs_only(self, clock):
         jobs = {}
         for index in range(MAX_RETAINED_JOBS + 3):
             job = GenerationJob()
@@ -38,9 +40,7 @@ class GenerationSettingsTests(unittest.TestCase):
         prune_jobs(jobs)
         self.assertLess(len(jobs), MAX_RETAINED_JOBS)
         self.assertIs(jobs["active"], active)
-        for job in jobs.values():
-            if job is not active:
-                job.finished_at = 0
+        clock.return_value += JOB_TTL_SECONDS + 1
         prune_jobs(jobs)
         self.assertEqual(list(jobs), ["active"])
 
