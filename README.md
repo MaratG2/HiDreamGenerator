@@ -1,74 +1,138 @@
-# HiDream-O1-Image-Dev-2604 for Text-to-Image Generation
+# HiDreamGenerator
 
+A local image studio and MCP server built on [HiDream-O1-Image](https://github.com/HiDream-ai/HiDream-O1-Image). Describe an image, edit a reference, or generate from an agent while keeping inference on your own GPU.
 
-## Models
+This is a community application and integration layer. The underlying model and inference architecture are by HiDream.ai; their MIT attribution is preserved in [LICENSE](LICENSE).
 
-| Name | Script | Inference Steps | HuggingFace Repo |
-| :--- | :--- | :---: | :--- |
-| HiDream-O1-Image-Dev-2604 | `inference.py` | 28 | [🤗 HiDream-O1-Image-Dev-2604](https://huggingface.co/HiDream-ai/HiDream-O1-Image-Dev-2604) |
-| Prompt Agent 2604 | `prompt_agent_v2.py` | — | [🤗 HiDream-ai/Prompt-Refine](https://huggingface.co/HiDream-ai/Prompt-Refine) |
+![HiDreamGenerator with a generated teapot loaded for editing](docs/images/studio.png)
 
-## Installation
+## Features
 
-1. Clone this repository:
-```bash
-git clone https://github.com/HiDream-ai/HiDream-O1-Image.git
-cd HiDream-O1-Image
-git checkout dev
+- React/TypeScript studio: text-to-image, single-image editing, live previews, copy/download, and sequential batches of up to four.
+- Flask API: strict validation, a bounded GPU queue, reconnectable SSE progress, and explicit mock mode.
+- MCP tools: generation, editing, composition from two to eight references, and optional prompt refinement.
+- Installable HiDream skill: automatic selection for local image requests, with guidance for dimensions, model defaults, and long-running jobs.
+- Output and render dimensions, seeds, mock status, prompts and effective settings embedded in API-generated PNGs. MCP also saves a JSON sidecar.
+
+## Verified examples
+
+Generated locally with the quantized full model described below, on an RTX 5060 Ti
+16 GiB. These are real model outputs, not mock placeholders.
+
+| Create: 1024×768 | Edit: 768×576 |
+| --- | --- |
+| ![Generated red ceramic teapot](docs/images/teapot-create.png) | ![Teapot edited to deep blue](docs/images/teapot-edit.png) |
+
+Creation used seed `314159`, 50 steps, guidance 5 and shift 3. The edit instruction
+was “Change the red teapot to deep blue ceramic. Keep the table and window light.”
+It used seed `271828`, 20 steps and the same guidance/shift; it rendered at
+1728×1280 and exported at exactly 768×576. Both used UniPC. The observed runs took
+141 and 351 seconds respectively; available VRAM, compilation and settings affect
+timings substantially. These are functional smoke tests, not throughput benchmarks.
+
+## Try it without a GPU
+
+Requires Python 3.12+ and Node.js 22+. Clone the repository first:
+
+```sh
+git clone https://github.com/MaratG2/HiDreamGenerator.git
+cd HiDreamGenerator
+python -m venv .venv
+# Windows PowerShell:
+.venv/Scripts/Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -r requirements-test.txt
+cd frontend
+npm ci
+npm run build
+cd ..
+python app.py --mock
 ```
 
-2. Install the required dependencies:
-```bash
-pip install -r requirements.txt
+Open [localhost:7860](http://127.0.0.1:7860). Mock mode produces labelled placeholders, not AI images. Python model dependencies are loaded only for real inference.
+
+## Real inference
+
+Requires a CUDA-capable NVIDIA GPU and compatible PyTorch. Download model weights separately. The locally tested setup uses Windows, an RTX 5060 Ti with 16 GiB VRAM, and a quantized full-model checkpoint.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-windows-cuda.txt
+.\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('WaveCut/HiDream-O1-Image-SDNQ-uint4-svd-r32-last8-odown-bf16', local_dir=r'HiDream-ai\HiDream-O1-Image-SDNQ-4bit-low-vram')"
+.\start_image_server.ps1
 ```
 
-> **Note on `flash-attn`.** We highly recommend installing [`flash-attn`](https://github.com/Dao-AILab/flash-attention) for optimized attention computation. **If you do not (or cannot) install `flash-attn`, you must edit `models/pipeline.py` line 291 and change `"use_flash_attn": True` to `"use_flash_attn": False`** — otherwise inference will fail to import the kernel.
+See [Windows setup](docs/WINDOWS.md) for optional acceleration and the separate prompt refiner. The specialized FlashAttention wheel only supports its documented GPU/dtype combination. Start with automatic attention selection or SDPA.
 
-## Reasoning-Driven Prompt Agent
+The launcher preserves `FA_VERSION` and SDNQ options from the environment/`.env`.
+Use `-DisableQuantizationCompile` to run SDNQ without its optional compilation and
+Triton matmul path when diagnosing startup or memory problems.
 
-HiDream-O1-Image ships with a Reasoning-Driven Prompt Agent (`prompt_agent_v2.py`) that explicitly reasons through layout, subject attributes, physical logic, and text-rendering details, then rewrites a raw user instruction into a self-contained English prompt. Feed its output into `inference.py` for best results on intricate, reasoning-heavy requests.
+On another compatible CUDA system, install the correct CUDA-enabled PyTorch build, then `python -m pip install -r requirements.txt`. Quantized checkpoints additionally need their quantizer integration (SDNQ is in the Windows requirements). Build the frontend as above, then run:
 
-The agent talks to an OpenAI-compatible endpoint serving [`HiDream-ai/Prompt-Refine`](https://huggingface.co/HiDream-ai/Prompt-Refine) via vLLM.
-
-### Step 1 — Download the refiner weights
-
-```bash
-huggingface-cli download HiDream-ai/Prompt-Refine \
-    --local-dir HiDream-ai/Prompt-Refine
+```sh
+python app.py --model_path /path/to/checkpoint --model_type full
 ```
 
-### Step 2 — Start the vLLM server
+Use `--model_type dev` only for a distilled dev checkpoint. The official [dev model](https://huggingface.co/HiDream-ai/HiDream-O1-Image-Dev-2604) uses 28 steps. Full defaults are 50 steps, guidance 5, shift 3; dev defaults are 28 steps, guidance 0, shift 1. Model type is not inferred from a renamed folder.
 
-```bash
-bash start_vllm_server.sh
+Copy `.env.example` to `.env` for local configuration. Keep `.env` private. Explicit launch arguments take priority; the Windows launcher has its own checkpoint default, overridden with `-ModelPath` and `-ModelType`.
+
+## Settings contract
+
+| Setting | Behavior |
+| --- | --- |
+| Output size | API dimensions are 512–4096 in multiples of 64. The returned PNG has the resolved output dimensions; unexpected dimensions are rejected. |
+| Reference render size | Edits/composition use a roughly 2 MP minimum internal pixel budget, bounded to 4096 per edge, then resize to the exact output. Small native edit canvases produced noise in GPU validation; forcing every edit to 4 MP was impractically slow on the test machine. Larger requested outputs keep their size. Both sizes are disclosed as `width`/`height` and `render_width`/`render_height`; smaller exports do not necessarily make edits faster. Text-only generation uses the requested canvas directly. |
+| Keep original aspect | One reference's proportions at the selected long edge, rounded to 64 pixels. It does not preserve the source's original pixel count. Extremely narrow sources are rejected. |
+| Quality | Full: 12/20/32/50 steps, default 50. Dev: 12/20/28/50, default 28. Fewer steps trade detail for speed; more steps do not guarantee better output. |
+| Scheduler | Full defaults to UniPC; dev text/composition uses Flash, dev edits use Flow Match. Explicit API/CLI choices are honored. |
+| Custom steps/shift | Use generated timesteps. The trained 28-step dev schedule is preserved with steps=28, shift=1 and the default scheduler. |
+| Flash noise controls | `noise_scale_end` and `noise_clip_std` require Flash; otherwise validation rejects them. |
+| Seed | Integer 0–4294967295. Batches increment seeds and must stay in range. |
+| References | PNG/JPEG/WebP, up to 24 MB and 24 megapixels each, within a 64 MB HTTP request. EXIF orientation is applied. |
+
+The CLI shares generation defaults with the API:
+
+```sh
+python inference.py --model_path /path/to/checkpoint --model_type full \
+  --prompt "A red ceramic teapot beside a window" --width 1024 --height 768 \
+  --num_inference_steps 50 --output_image results/teapot.png
 ```
 
-This launches `HiDream-ai/Prompt-Refine` on `http://localhost:8000/v1`.
+Refinement is optional. Configure `HIDREAM_REFINE_BASE_URL`, `HIDREAM_REFINE_MODEL` and, if needed, `HIDREAM_REFINE_API_KEY` on the server. HTTP clients cannot redirect the refiner to arbitrary URLs. Failures are reported visibly.
 
-### Step 3 — Run the refiner
+## Agents and API
 
-```bash
-python prompt_agent_v2.py \
-    --prompt "A vintage aviation poster featuring a bright red biplane cruising over rolling farmlands. Bold blocky text at the bottom promises adventure in the friendly skies."
+See [MCP setup and tools](docs/MCP.md). The adapter uses the same image server and does not load another model. Registration is a separate explicit step.
+
+For automatic skill selection in Codex, install the bundled skill with
+`.\scripts\install_codex_skill.ps1` after MCP setup. Ask for HiDream or local
+image generation, or invoke `$hidream` explicitly. The skill is portable and
+versioned in [`skills/hidream`](skills/hidream/SKILL.md); installing it does not
+start the GPU backend or connect ChatGPT in the cloud.
+
+POST JSON to `/api/generate/start`, then subscribe to `/api/generate/stream/<job_id>`. Start and completion include effective dimensions/settings. SSE events have IDs; reconnect using `Last-Event-ID`. Completed jobs remain in memory up to 15 minutes, subject to a 16-job cache. Four running/queued jobs can be admitted; additional submissions receive HTTP 429. One GPU inference runs at a time.
+
+Studio retains 40 images in browser memory. Reloading clears history; download images you want to keep. Disconnecting does not cancel GPU work. Brief interruptions reconnect automatically; full-page job recovery and cancellation are not implemented.
+
+## Development
+
+```sh
+python -m pip install -r requirements-test.txt
+python -m unittest discover -s tests -v
+cd frontend
+npm ci
+npm run build
+npm run dev
 ```
 
-By default the script targets `http://localhost:8000/v1` and `HiDream-ai/Prompt-Refine`; override with `--base_url` or `--model_id` if you serve the model elsewhere. The same module also exposes a reusable `refine_prompt(prompt, model_id=..., base_url=...)` function used by `app.py`.
+Vite runs at [localhost:5173](http://127.0.0.1:5173) and proxies `/api` to port 7860. Flask must also be running. `npm run lint` performs TypeScript checks, not ESLint. GitHub Actions checks API/MCP tests and frontend builds without downloading model weights. See [Contributing](CONTRIBUTING.md).
 
-## Usage
+## Hosting and license
 
-A CUDA-capable GPU is required for inference. The examples below use the **undistilled** model (`--model_type full`); see the last subsection for running the same tasks with the **distilled** model (`--model_type dev`).
+This is a local, single-user app. It binds to loopback and validates hosts/origins, request sizes and job limits. It has no authentication, durable job storage or per-user quotas.
 
-### 1. Text-to-Image Generation
-Generate an image from a text prompt:
+Publishing the source does not require exposing the inference port. Shared hosting needs authenticated access, TLS, request/GPU quotas and a production server with one model-owning process. Do not expose Flask's development server directly on a public domain. See [SECURITY.md](SECURITY.md).
 
-```bash
-python inference.py \
-    --model_path /path/to/HiDream-O1-Image-Dev-2604 \
-    --prompt "A vintage aviation poster depicting a bright red biplane cruising over rolling farmlands under a partly cloudy sky, with saturated colors and an aged paper texture. A red biplane with two sets of wings and a radial engine is positioned in the upper center of the image, flying toward the right. A pilot with light skin, wearing a brown flight helmet, goggles, and a brown jacket, is visible in the open cockpit. The biplane has black wheels with red hubs and a spinning propeller. Below, the landscape consists of rolling fields in various shades of green, yellow, and brown, divided by dirt roads and scattered with small houses, including a red barn, a brown house, and a white house. In the background, a line of green trees separates the fields from distant hills under a blue sky with white clouds. The poster has a textured, aged paper border with visible creases and discoloration. At the bottom, the text \"ADVENTURE IN THE FRIENDLY SKIES\" is displayed in large, bold, dark brown capital letters across two lines on a light beige background." \
-    --output_image results/t2i.png \
-    --height 2048 \
-    --width 2048
-```
-
-## License
-The code in this repository and the HiDream-O1-Image-Dev-2604 models are licensed under [MIT License](./LICENSE).
+[MIT](LICENSE), preserving upstream attribution. Open source is not a public-domain dedication. Check the publisher's terms for each separately downloaded checkpoint.

@@ -1,0 +1,13 @@
+interface:
+  display_name: "HiDream"
+  short_description: "Generate and edit images with your local HiDream GPU"
+  default_prompt: "Use $hidream to generate or edit an image with my local model."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "hidream"
+      description: "Local HiDream image MCP server; register it from the HiDream checkout."
+
+policy:
+  allow_implicit_invocation: true

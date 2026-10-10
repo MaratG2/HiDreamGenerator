@@ -5,6 +5,8 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+.build/
+node_modules/
 .Python
 build/
 develop-eggs/
@@ -96,6 +98,7 @@ models_cache/
 .cache/
 .hf_cache/
 huggingface/
+HiDream-ai/
 
 # Generated outputs
 outputs/
@@ -114,6 +117,7 @@ generated/
 !assets/**/*.mp4
 !docs/**/*.png
 !docs/**/*.jpg
+!frontend/design/*.png
 
 # LaTeX build artifacts
 *.aux
@@ -132,11 +136,22 @@ generated/
 *.vrb
 
 # Temp files
+.superdesign/tmp/
 tmp/
 temp/
 *.tmp
 *.bak
 *.tex
 *.txt
+!requirements*.txt
 .claude
 assets/demo.mp4
+
+# Keep application source and the safe configuration template in fresh clones.
+!frontend/src/lib/
+!frontend/src/lib/**
+!.env.example
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+.superdesign/

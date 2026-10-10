@@ -1,15 +1,19 @@
+import os
+
 import torch
 import einops
 import numpy as np
 import tqdm
-from PIL import Image
+from PIL import Image, ImageOps
+from generation_settings import DEFAULT_TIMESTEPS, aspect_dimensions, render_dimensions, validate_dimensions
 import torchvision.transforms.v2 as transforms
 from diffusers import FlowMatchEulerDiscreteScheduler
 # FlowUniPCMultistepScheduler generates more details than FlowMatchEulerDiscreteScheduler
 from .fm_solvers_unipc import FlowUniPCMultistepScheduler  # noqa: E402
 from .flash_scheduler import FlashFlowMatchEulerDiscreteScheduler
-from .utils import resize_pilimage, calculate_dimensions, get_rope_index_fix_point, find_closest_resolution
+from .utils import resize_pilimage, calculate_dimensions, get_rope_index_fix_point
 from .utils import create_layout_reference_images, load_layout_bboxes
+from .qwen3_vl_transformers import is_flash_attn_available
 
 TIMESTEP_TOKEN_NUM = 1
 NOISE_SCALE = 8.0
@@ -22,11 +26,6 @@ TENSOR_TRANSFORM = transforms.Compose([
     transforms.ToDtype(torch.float32, scale=True),
     transforms.Normalize([0.5], [0.5]),
 ])
-
-DEFAULT_TIMESTEPS = [
-    999, 987, 974, 960, 945, 929, 913, 895, 877, 857, 836, 814, 790, 764, 737,
-    707, 675, 640, 602, 560, 515, 464, 409, 347, 278, 199, 110, 8,
-]
 
 def build_t2i_text_sample(prompt, height, width, tokenizer, processor, model_config):
     image_token_id = model_config.image_token_id
@@ -123,36 +122,56 @@ def generate_image(
         keep_original_aspect: bool = False,
         layout_bboxes: str = None,
         callback=None,
+        use_flash_attn: bool = None,
 ) -> Image.Image:
     device = model.device
     dtype = torch.bfloat16
     model_config = model.config
     tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
 
-    # When `keep_original_aspect` is enabled and exactly one reference image is
-    # provided, resize the reference to max_size=2048 (patch-aligned) and derive
-    # the target image dimensions from the resized reference. This bypasses the
-    # predefined-resolution snapping so the output preserves the reference's
-    # original aspect ratio.
+    if use_flash_attn is None:
+        attention_backend = os.environ.get("HIDREAM_ATTENTION_BACKEND", "auto").lower()
+        if attention_backend not in {"auto", "flash", "sdpa"}:
+            raise ValueError(
+                "HIDREAM_ATTENTION_BACKEND must be one of: auto, flash, sdpa"
+            )
+        use_flash_attn = attention_backend != "sdpa" and is_flash_attn_available()
+        if attention_backend == "flash" and not use_flash_attn:
+            raise RuntimeError(
+                "FlashAttention was requested but flash_attn could not be imported. "
+                "On Windows, run scripts/install_flash_attn_windows.ps1; otherwise use "
+                "HIDREAM_ATTENTION_BACKEND=sdpa."
+            )
+    print(
+        "[inference] Attention backend: "
+        + ("external FlashAttention" if use_flash_attn else "PyTorch SDPA (cuDNN enabled)")
+    )
+    if not use_flash_attn and torch.cuda.is_available():
+        # Official Windows PyTorch wheels do not currently include the
+        # FlashAttention kernel, but their cuDNN SDPA backend supports the BF16
+        # masked-attention shapes used by the standard decoder path.
+        torch.backends.cuda.enable_cudnn_sdp(True)
+
+    # Source aspect controls proportions; the caller still controls resolution.
     preresized_ref_pil = None
+    pil_orig = None
     if keep_original_aspect and ref_image_paths and len(ref_image_paths) == 1:
-        pil_orig = Image.open(ref_image_paths[0]).convert("RGB")
-        preresized_ref_pil = resize_pilimage(pil_orig, 2048, PATCH_SIZE)
-        width, height = preresized_ref_pil.size
+        with Image.open(ref_image_paths[0]) as source:
+            pil_orig = ImageOps.exif_transpose(source).convert("RGB")
+        width, height = aspect_dimensions(*pil_orig.size, max(width, height))
         print(
             f"[info] keep_original_aspect: target size set to {width}x{height} "
             f"from reference image"
         )
     else:
         if keep_original_aspect:
-            print(
-                "[warning] keep_original_aspect requires exactly one reference "
-                "image; falling back to default resolution snapping."
-            )
-        w, h = find_closest_resolution(width, height)
-        if w != width or h != height:
-            print(f"[warning] Resolution snapped from {width}x{height} to {w}x{h}")
-            width, height = w, h
+            raise ValueError("keep_original_aspect requires exactly one reference image")
+        validate_dimensions(width, height, alignment=PATCH_SIZE)
+    output_size = (width, height)
+    width, height = render_dimensions(width, height, bool(ref_image_paths))
+    if pil_orig is not None:
+        preresized_ref_pil = pil_orig.resize((width, height), Image.Resampling.LANCZOS)
+    print(f"[inference] Render: {width}x{height}; output: {output_size[0]}x{output_size[1]}")
 
     h_patches = height // PATCH_SIZE
     w_patches = width // PATCH_SIZE
@@ -184,7 +203,10 @@ def generate_image(
         if preresized_ref_pil is not None:
             ref_pils = [preresized_ref_pil]
         else:
-            ref_pils = [Image.open(p).convert("RGB") for p in ref_image_paths]
+            ref_pils = []
+            for path in ref_image_paths:
+                with Image.open(path) as source:
+                    ref_pils.append(ImageOps.exif_transpose(source).convert("RGB"))
 
         K = len(ref_pils)
         layout_data = None
@@ -338,7 +360,7 @@ def generate_image(
                 "vinputs": z_in,
                 "timestep": t_pixeldit.reshape(-1).to(device),
                 "token_types": sample['token_types'],
-                "use_flash_attn": True,
+                "use_flash_attn": use_flash_attn,
                 "precomputed_image_embeds": precomputed_image_embeds,
                 "precomputed_deepstack_image_embeds": precomputed_deepstack_image_embeds
             }
@@ -432,4 +454,7 @@ def generate_image(
     img = (z + 1) / 2
     img = einops.rearrange(img.cpu().float(), 'B (H W) (C p1 p2) -> B C (H p1) (W p2)', H=h_patches, W=w_patches, p1=PATCH_SIZE, p2=PATCH_SIZE)
     arr = np.round(np.clip(img[0].numpy().transpose(1, 2, 0) * 255, 0, 255)).astype(np.uint8)
-    return Image.fromarray(arr).convert("RGB")
+    image = Image.fromarray(arr).convert("RGB")
+    if image.size != output_size:
+        image = image.resize(output_size, Image.Resampling.LANCZOS)
+    return image

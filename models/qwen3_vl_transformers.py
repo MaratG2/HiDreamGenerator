@@ -26,22 +26,33 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-flash_attn_version = os.environ.get("FA_VERSION", "2")
+flash_attn_version = os.environ.get("FA_VERSION", "auto").lower()
 USE_BF16_ROPE = os.environ.get("USE_BF16_ROPE", "0")
 # Flash Attention import (FA3 preferred, FA2 fallback)
 _flash_attn_func = None
 if flash_attn_version == "2":
-    from flash_attn import flash_attn_func as _flash_attn_func
+    try:
+        from flash_attn import flash_attn_func as _flash_attn_func
+    except (ImportError, OSError):
+        _flash_attn_func = None
 elif flash_attn_version == "3":
-    from flash_attn_interface import flash_attn_func as _flash_attn_func
+    try:
+        from flash_attn_interface import flash_attn_func as _flash_attn_func
+    except (ImportError, OSError):
+        _flash_attn_func = None
 else:
     try:
         from flash_attn_interface import flash_attn_func as _flash_attn_func
-    except ImportError:
+    except (ImportError, OSError):
         try:
             from flash_attn import flash_attn_func as _flash_attn_func
-        except ImportError:
+        except (ImportError, OSError):
             _flash_attn_func = None
+
+
+def is_flash_attn_available() -> bool:
+    """Return whether an external FlashAttention 2/3 kernel was imported."""
+    return _flash_attn_func is not None
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.generation import GenerationMixin
@@ -828,6 +839,8 @@ class Qwen3VLTextModel(Qwen3VLPreTrainedModel):
             The deepstack visual embeddings. The shape is (num_layers, visual_seqlen, embed_dim).
             The feature is extracted from the different visual encoder layers, and fed to the decoder
             hidden states. It's from the paper DeepStack(https://arxiv.org/abs/2406.04334).
+        return_mid_results_layers (`list[int]`, *optional*):
+            Decoder layer indices whose intermediate hidden states should be returned.
         """
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -1642,6 +1655,16 @@ class Qwen3VLModel(Qwen3VLPreTrainedModel):
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, Qwen3VLModelOutputWithPast]:
         r"""
+        vinputs (`torch.Tensor`, *optional*):
+            Patchified target noise and reference pixels for image generation.
+        timestep (`torch.Tensor`, *optional*):
+            Generation timestep for each sample.
+        token_types (`torch.Tensor`, *optional*):
+            Sequence mask distinguishing autoregressive and image-generation tokens.
+        use_flash_attn (`bool`, *optional*, defaults to `False`):
+            Use the external FlashAttention generation decoder when available.
+        return_mid_results_layers (`list[int]`, *optional*):
+            Decoder layer indices whose intermediate hidden states should be returned.
         image_grid_thw (`torch.LongTensor` of shape `(num_images, 3)`, *optional*):
             The temporal, height and width of feature shape of each image in LLM.
         video_grid_thw (`torch.LongTensor` of shape `(num_videos, 3)`, *optional*):

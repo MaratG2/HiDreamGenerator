@@ -1,0 +1,12 @@
+-r requirements.txt
+
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.13.0+cu130
+torchvision==0.28.0+cu130
+
+# Runtime integration for the recommended 4-bit image checkpoint.
+sdnq==0.2.3
+
+# SDNQ's compiled dequantization/matmul path on Windows and its build runner.
+triton-windows==3.7.1.post27
+ninja==1.13.0

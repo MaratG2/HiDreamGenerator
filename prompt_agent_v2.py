@@ -108,6 +108,8 @@ def refine_prompt(
     max_attempts: int = 3,
     api_max_attempts: int = 5,
     api_retry_delay: float = 30.0,
+    request_timeout: float = 60.0,
+    raise_on_failure: bool = False,
 ) -> str:
     """Rewrite a raw user prompt via an OpenAI-compatible endpoint.
 
@@ -121,7 +123,7 @@ def refine_prompt(
     If every attempt is degenerate or the API is unreachable, falls back to the
     original ``prompt`` so downstream image generation still gets a usable input.
     """
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=request_timeout, max_retries=0)
     for attempt in range(1, max_attempts + 1):
         refined = _call_with_retry(
             client,
@@ -138,18 +140,21 @@ def refine_prompt(
                 file=sys.stderr,
             )
             continue
-        if not _has_tail_repetition(refined):
+        if refined.strip() and not _has_tail_repetition(refined):
+            client.close()
             return refined
         print(
             f"[refine_prompt] attempt {attempt}/{max_attempts} produced "
             "degenerate tail repetition; retrying...",
             file=sys.stderr,
         )
-    print(
-        f"[refine_prompt] all {max_attempts} attempts failed; falling back to "
-        "the original prompt.",
-        file=sys.stderr,
-    )
+    client.close()
+    if raise_on_failure:
+        raise RuntimeError(
+            "Prompt refinement failed because the configured model endpoint did not return a valid prompt. "
+            "Start the prompt refiner and verify HIDREAM_REFINE_BASE_URL and HIDREAM_REFINE_MODEL."
+        )
+    print(f"[refine_prompt] all {max_attempts} attempts failed; falling back to the original prompt.", file=sys.stderr)
     return prompt
 
 
